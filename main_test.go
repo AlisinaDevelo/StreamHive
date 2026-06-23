@@ -94,3 +94,53 @@ func TestRun_healthEndpoints(t *testing.T) {
 	cancel()
 	<-errCh
 }
+
+func TestRun_putRequiresDial(t *testing.T) {
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"-put-key", "alpha", "-put-data", "hello"}, &out, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "-put-key requires -dial")
+}
+
+func TestRun_replicatesBlobPutToDialPeer(t *testing.T) {
+	serverCtx, serverCancel := context.WithCancel(context.Background())
+	defer serverCancel()
+	var serverOut, serverErr safeBuffer
+	serverErrCh := make(chan error, 1)
+	go func() {
+		serverErrCh <- run(serverCtx, []string{"-listen", "127.0.0.1:0", "-replicate"}, &serverOut, &serverErr)
+	}()
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(serverOut.String(), "listening on")
+	}, 3*time.Second, 20*time.Millisecond)
+
+	re := regexp.MustCompile(`listening on ([^\n]+)`)
+	m := re.FindStringSubmatch(serverOut.String())
+	require.Len(t, m, 2, "stdout=%q", serverOut.String())
+
+	clientCtx, clientCancel := context.WithCancel(context.Background())
+	defer clientCancel()
+	var clientOut, clientErr safeBuffer
+	clientErrCh := make(chan error, 1)
+	go func() {
+		clientErrCh <- run(clientCtx, []string{
+			"-listen", "127.0.0.1:0",
+			"-dial", m[1],
+			"-put-key", "alpha",
+			"-put-data", "hello",
+		}, &clientOut, &clientErr)
+	}()
+
+	require.Eventually(t, func() bool {
+		logs := serverErr.String()
+		return strings.Contains(logs, "replicated blob stored") &&
+			strings.Contains(logs, "key=alpha") &&
+			strings.Contains(logs, "bytes=5")
+	}, 3*time.Second, 20*time.Millisecond, "server logs=%q client logs=%q", serverErr.String(), clientErr.String())
+
+	clientCancel()
+	serverCancel()
+	require.NoError(t, <-clientErrCh)
+	require.NoError(t, <-serverErrCh)
+}

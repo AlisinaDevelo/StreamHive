@@ -19,6 +19,8 @@ import (
 
 	"github.com/AliSinaDevelo/StreamHive/internal/version"
 	"github.com/AliSinaDevelo/StreamHive/p2p"
+	"github.com/AliSinaDevelo/StreamHive/replication"
+	"github.com/AliSinaDevelo/StreamHive/storage"
 )
 
 func main() {
@@ -42,6 +44,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	dialTimeout := fs.Duration("dial-timeout", 0, "default dial timeout (0 = use context only)")
 	readIdle := fs.Duration("read-idle-timeout", 0, "TCP read deadline refresh for peer loops (0 = none for discard mode)")
 	showVer := fs.Bool("version", false, "print version and exit")
+	replicate := fs.Bool("replicate", false, "enable in-memory blob replication from framed peers")
+	putKey := fs.String("put-key", "", "send one replicated blob key to -dial peer")
+	putData := fs.String("put-data", "", "send one replicated blob value to -dial peer")
+	maxBlobBytes := fs.Int("max-blob-bytes", replication.DefaultMaxDataBytes, "max replicated blob payload bytes")
 
 	tlsCert := fs.String("tls-cert", "", "path to PEM certificate (enables TLS on listener)")
 	tlsKey := fs.String("tls-key", "", "path to PEM private key for -tls-cert")
@@ -59,6 +65,23 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		_, err := fmt.Fprintln(stdout, version.Version)
 		return err
 	}
+	if *putKey != "" && *dial == "" {
+		return fmt.Errorf("replication: -put-key requires -dial")
+	}
+
+	replLimits := replication.Limits{MaxDataBytes: *maxBlobBytes}
+	var blobStore *storage.MemoryStore
+	if *replicate {
+		blobStore = storage.NewMemoryStore()
+	}
+	var putPayload []byte
+	if *putKey != "" {
+		var err error
+		putPayload, err = replication.EncodeBlobPut([]byte(*putKey), []byte(*putData), replLimits)
+		if err != nil {
+			return err
+		}
+	}
 
 	tr := p2p.NewTCPTransport(*listen)
 	tr.Logger = log
@@ -67,6 +90,34 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	tr.ReadIdleTimeout = *readIdle
 	tr.OnPeer = func(peer p2p.Peer) {
 		log.Info("peer", "remote", peer.RemoteAddr().String(), "outbound", peer.IsOutbound())
+		if putPayload == nil || !peer.IsOutbound() {
+			return
+		}
+		tcpPeer, ok := peer.(*p2p.TCPPeer)
+		if !ok {
+			log.Error("replication send", "err", "peer is not TCP-backed")
+			_ = peer.Close()
+			return
+		}
+		if err := tcpPeer.WriteFrame(putPayload, tr.MaxFrameBytes); err != nil {
+			log.Error("replication send", "remote", peer.RemoteAddr().String(), "err", err)
+			_ = peer.Close()
+			return
+		}
+		log.Info("replicated blob sent", "remote", peer.RemoteAddr().String(), "key", *putKey, "bytes", len(*putData))
+	}
+	if blobStore != nil {
+		tr.FrameHandler = func(ctx context.Context, peer p2p.Peer, payload []byte) error {
+			msg, err := replication.Decode(payload, replLimits)
+			if err != nil {
+				return err
+			}
+			if err := blobStore.Put(ctx, msg.Key, msg.Data); err != nil {
+				return err
+			}
+			log.Info("replicated blob stored", "remote", peer.RemoteAddr().String(), "key", string(msg.Key), "bytes", len(msg.Data), "blobs", blobStore.Len())
+			return nil
+		}
 	}
 
 	if *tlsCert != "" || *tlsKey != "" {

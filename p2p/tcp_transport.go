@@ -45,6 +45,11 @@ func (p *TCPPeer) IsOutbound() bool { return p.outbound }
 // Conn returns the underlying connection for protocol codecs.
 func (p *TCPPeer) Conn() net.Conn { return p.conn }
 
+// WriteFrame writes one StreamHive frame to the peer connection.
+func (p *TCPPeer) WriteFrame(payload []byte, maxPayload int) error {
+	return WriteFrame(p.conn, payload, maxPayload)
+}
+
 var _ Peer = (*TCPPeer)(nil)
 
 // TCPTransport listens on TCP and tracks connected peers.
