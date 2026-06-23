@@ -7,6 +7,16 @@
 3. **Concurrency**: `make test-race`
 4. **Coverage**: `make cover` writes `coverage.out` and prints `go tool cover -func` output.
 
+## Benchmarks
+
+Run local microbenchmarks for framing and the in-memory blob store:
+
+```bash
+go test -bench=. -benchmem -run '^$' ./...
+```
+
+The current benchmark coverage focuses on `SHV1` frame round-trips and `MemoryStore` `Put`/`Get` throughput. Treat results as local-machine signals, not portable service-level guarantees.
+
 ## Continuous integration
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on pushes and pull requests to `main`:
