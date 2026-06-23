@@ -139,6 +139,7 @@ func TestRun_replicatesBlobPutToDialPeer(t *testing.T) {
 			"-dial", m[1],
 			"-put-key", "alpha",
 			"-put-data", "hello",
+			"-exit-after-put",
 		}, &clientOut, &clientErr)
 	}()
 
@@ -149,7 +150,6 @@ func TestRun_replicatesBlobPutToDialPeer(t *testing.T) {
 			strings.Contains(logs, "bytes=5")
 	}, 3*time.Second, 20*time.Millisecond, "server logs=%q client logs=%q", serverErr.String(), clientErr.String())
 
-	clientCancel()
 	serverCancel()
 	require.NoError(t, <-clientErrCh)
 	require.NoError(t, <-serverErrCh)

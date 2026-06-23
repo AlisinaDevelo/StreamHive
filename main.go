@@ -48,6 +48,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	replicate := fs.Bool("replicate", false, "enable in-memory blob replication from framed peers")
 	putKey := fs.String("put-key", "", "send one replicated blob key to -dial peer")
 	putData := fs.String("put-data", "", "send one replicated blob value to -dial peer")
+	exitAfterPut := fs.Bool("exit-after-put", false, "exit after sending -put-key to the dialed peer")
 	maxBlobBytes := fs.Int("max-blob-bytes", replication.DefaultMaxDataBytes, "max replicated blob payload bytes")
 
 	tlsCert := fs.String("tls-cert", "", "path to PEM certificate (enables TLS on listener)")
@@ -77,12 +78,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		blobStore = storage.NewMemoryStore()
 	}
 	var putPayload []byte
+	var putResult chan error
 	if *putKey != "" {
 		var err error
 		putPayload, err = replication.EncodeBlobPut([]byte(*putKey), []byte(*putData), replLimits)
 		if err != nil {
 			return err
 		}
+		putResult = make(chan error, 1)
 	}
 
 	tr := p2p.NewTCPTransport(*listen)
@@ -97,18 +100,22 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		}
 		tcpPeer, ok := peer.(*p2p.TCPPeer)
 		if !ok {
-			log.Error("replication send", "err", "peer is not TCP-backed")
+			err := errors.New("peer is not TCP-backed")
+			reportPutResult(putResult, err)
+			log.Error("replication send", "err", err)
 			_ = peer.Close()
 			return
 		}
 		if err := tcpPeer.WriteFrame(putPayload, tr.MaxFrameBytes); err != nil {
 			replMetrics.SendErrors.Add(1)
+			reportPutResult(putResult, err)
 			log.Error("replication send", "remote", peer.RemoteAddr().String(), "err", err)
 			_ = peer.Close()
 			return
 		}
 		replMetrics.BlobsSent.Add(1)
 		replMetrics.BytesSent.Add(uint64(len(*putData)))
+		reportPutResult(putResult, nil)
 		log.Info("replicated blob sent", "remote", peer.RemoteAddr().String(), "key", *putKey, "bytes", len(*putData))
 	}
 	if blobStore != nil {
@@ -184,6 +191,22 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		if err := tr.Dial(ctx, *dial); err != nil {
 			return fmt.Errorf("dial: %w", err)
 		}
+		if *exitAfterPut && putResult != nil {
+			select {
+			case err := <-putResult:
+				if err != nil {
+					return fmt.Errorf("replication: send blob: %w", err)
+				}
+				return nil
+			case <-ctx.Done():
+				if errors.Is(ctx.Err(), context.Canceled) {
+					return nil
+				}
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+				return fmt.Errorf("replication: timed out waiting for blob send")
+			}
+		}
 	}
 
 	var hsrv *http.Server
@@ -205,6 +228,16 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 	return ctx.Err()
+}
+
+func reportPutResult(ch chan<- error, err error) {
+	if ch == nil {
+		return
+	}
+	select {
+	case ch <- err:
+	default:
+	}
 }
 
 type replicationMetrics struct {
