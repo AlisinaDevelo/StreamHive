@@ -1,0 +1,126 @@
+package storage
+
+import (
+	"context"
+	"encoding/hex"
+	"errors"
+	"os"
+	"path/filepath"
+)
+
+// FileStore stores blobs as files named by hex-encoded keys.
+type FileStore struct {
+	dir string
+}
+
+// NewFileStore opens or creates a directory-backed BlobStore.
+func NewFileStore(dir string) (*FileStore, error) {
+	if dir == "" {
+		return nil, errors.New("storage: empty directory")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	return &FileStore{dir: dir}, nil
+}
+
+func (s *FileStore) pathFor(key []byte) (string, error) {
+	if len(key) == 0 {
+		return "", ErrKeyEmpty
+	}
+	return filepath.Join(s.dir, hex.EncodeToString(key)), nil
+}
+
+// Put stores data under key, replacing any existing value atomically.
+func (s *FileStore) Put(ctx context.Context, key []byte, data []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	path, err := s.pathFor(key)
+	if err != nil {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(s.dir, ".streamhive-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	removeTmp := true
+	defer func() {
+		if removeTmp {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	removeTmp = false
+	return nil
+}
+
+// Get returns a copy of the value for key.
+func (s *FileStore) Get(ctx context.Context, key []byte) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	path, err := s.pathFor(key)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// Has reports whether key exists.
+func (s *FileStore) Has(ctx context.Context, key []byte) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	path, err := s.pathFor(key)
+	if err != nil {
+		return false, err
+	}
+	_, err = os.Stat(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// Delete removes key. Missing keys are not an error.
+func (s *FileStore) Delete(ctx context.Context, key []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	path, err := s.pathFor(key)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+var _ BlobStore = (*FileStore)(nil)
