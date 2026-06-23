@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/AliSinaDevelo/StreamHive/actions/workflows/ci.yml/badge.svg)](https://github.com/AliSinaDevelo/StreamHive/actions/workflows/ci.yml)
 
-StreamHive is a **Go library and CLI** for experimenting with distributed, content-addressed storage. It ships a production-minded **TCP transport** (context-aware listen/dial, TLS hooks, framing, metrics, limits), a **length-prefixed wire format** (`SHV1`), an in-memory **blob store** API, and operational endpoints (`/livez`, `/readyz`, `/metrics`).
+StreamHive is a **Go library and CLI** for experimenting with distributed, content-addressed storage. It ships a production-minded **TCP transport** (context-aware listen/dial, TLS hooks, framing, metrics, limits), a **length-prefixed wire format** (`SHV1`), a typed **blob replication protocol**, an in-memory **blob store** API, and operational endpoints (`/livez`, `/readyz`, `/metrics`).
 
 **Semver:** public API versions are tracked in [CHANGELOG.md](CHANGELOG.md) and [internal/version/version.go](internal/version/version.go) (currently **v0.2.0**, pre-1.0).
 
-**Status:** networking + framing + local storage contract are implemented; replication and global discovery are not. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**Status:** networking, framing, local storage, and static-peer blob replication v0.3 are implemented. Durable storage, conflict resolution, and global discovery are not. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Prerequisites
 
@@ -24,11 +24,34 @@ make run
 ./bin/fs -listen 127.0.0.1:0 -health 127.0.0.1:8080   # HTTP live/ready/metrics
 ```
 
+### Two-node replication demo
+
+Terminal 1: start a receiver with framed replication and metrics.
+
+```bash
+go run . -listen 127.0.0.1:7070 -replicate -health 127.0.0.1:8080
+```
+
+Terminal 2: dial the receiver and send one blob.
+
+```bash
+go run . -listen 127.0.0.1:0 -dial 127.0.0.1:7070 -put-key demo -put-data "hello streamhive"
+```
+
+Inspect counters:
+
+```bash
+curl -s http://127.0.0.1:8080/metrics
+```
+
+Look for `replication_blobs_stored`, `replication_bytes_stored`, and transport frame counters. The receiver stores blobs in memory for this v0.3 path.
+
 ### Library packages
 
 | Import | Purpose |
 |--------|---------|
 | `github.com/AliSinaDevelo/StreamHive/p2p` | `TCPTransport`, framing (`ReadFrame` / `WriteFrame`), metrics |
+| `github.com/AliSinaDevelo/StreamHive/replication` | Blob replication messages (`blob.put`) and store apply helper |
 | `github.com/AliSinaDevelo/StreamHive/storage` | `BlobStore`, `MemoryStore` |
 
 Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside application frames).
@@ -45,6 +68,9 @@ Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside applicati
 | `-read-idle-timeout` | Peer read deadline refresh |
 | `-tls-cert` / `-tls-key` | Server TLS |
 | `-tls-ca` / `-tls-server-name` / `-tls-insecure-skip-verify` | Client TLS |
+| `-replicate` | Enable in-memory blob replication from framed peers |
+| `-put-key` / `-put-data` | Send one blob to the `-dial` peer |
+| `-max-blob-bytes` | Cap replicated blob payload size |
 
 See the [Makefile](Makefile) for `test-race`, `vet`, `cover`, and `lint`.
 
@@ -57,9 +83,11 @@ flowchart TB
     T[TCPTransport]
     F[SHV1 frames]
     S[BlobStore]
+    R[replication blob.put]
     CLI --> T
     T --> F
-    CLI -. planned .-> S
+    F --> R
+    R --> S
   end
   T <-->|TCP/TLS| remote[Remote peers]
 ```

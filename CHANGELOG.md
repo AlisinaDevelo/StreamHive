@@ -2,6 +2,15 @@
 
 All notable changes to StreamHive are documented here. This project follows [Semantic Versioning](https://semver.org/) for the **public Go API** (`p2p`, `storage`, and stable CLI flags). Until v1.0.0, minor releases may include API adjustments; see entries below.
 
+## [Unreleased]
+
+### Added
+
+- **`replication`**: typed blob replication protocol with `blob.put` encoding, decoding, validation limits, and `BlobStore` apply helper.
+- **`p2p`**: `TCPPeer.WriteFrame` convenience method for framed peer writes.
+- **CLI**: `-replicate`, `-put-key`, `-put-data`, and `-max-blob-bytes` for a static two-node in-memory replication demo.
+- **Metrics**: replication counters for stored/sent blobs, stored/sent bytes, and replication errors.
+
 ## [0.2.0] — 2026-04-05
 
 ### Added
