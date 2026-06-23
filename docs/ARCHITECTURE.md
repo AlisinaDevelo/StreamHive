@@ -33,6 +33,21 @@
 
 ## Replication v0.3 scope
 
+```mermaid
+sequenceDiagram
+  participant Sender
+  participant SenderTransport as TCPTransport
+  participant ReceiverTransport as TCPTransport
+  participant Replication
+  participant Store as BlobStore
+
+  Sender->>SenderTransport: -dial receiver + -put-key/-put-data
+  SenderTransport->>ReceiverTransport: SHV1 frame carrying blob.put JSON
+  ReceiverTransport->>Replication: FrameHandler(payload)
+  Replication->>Replication: decode + validate limits
+  Replication->>Store: Put(ctx, key, data)
+```
+
 Implemented:
 
 - Static peer replication over `-dial`.
