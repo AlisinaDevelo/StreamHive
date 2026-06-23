@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"regexp"
@@ -90,6 +91,15 @@ func TestRun_healthEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = resp2.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp2.StatusCode)
+
+	resp3, err := client.Get(base + "/metrics")
+	require.NoError(t, err)
+	defer func() { _ = resp3.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp3.StatusCode)
+	var metrics map[string]int64
+	require.NoError(t, json.NewDecoder(resp3.Body).Decode(&metrics))
+	assert.Contains(t, metrics, "active_peers")
+	assert.Contains(t, metrics, "replication_blobs_stored")
 
 	cancel()
 	<-errCh

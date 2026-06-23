@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -71,6 +72,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 
 	replLimits := replication.Limits{MaxDataBytes: *maxBlobBytes}
 	var blobStore *storage.MemoryStore
+	replMetrics := &replicationMetrics{}
 	if *replicate {
 		blobStore = storage.NewMemoryStore()
 	}
@@ -100,21 +102,28 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return
 		}
 		if err := tcpPeer.WriteFrame(putPayload, tr.MaxFrameBytes); err != nil {
+			replMetrics.SendErrors.Add(1)
 			log.Error("replication send", "remote", peer.RemoteAddr().String(), "err", err)
 			_ = peer.Close()
 			return
 		}
+		replMetrics.BlobsSent.Add(1)
+		replMetrics.BytesSent.Add(uint64(len(*putData)))
 		log.Info("replicated blob sent", "remote", peer.RemoteAddr().String(), "key", *putKey, "bytes", len(*putData))
 	}
 	if blobStore != nil {
 		tr.FrameHandler = func(ctx context.Context, peer p2p.Peer, payload []byte) error {
 			msg, err := replication.Decode(payload, replLimits)
 			if err != nil {
+				replMetrics.ApplyErrors.Add(1)
 				return err
 			}
 			if err := blobStore.Put(ctx, msg.Key, msg.Data); err != nil {
+				replMetrics.ApplyErrors.Add(1)
 				return err
 			}
+			replMetrics.BlobsStored.Add(1)
+			replMetrics.BytesStored.Add(uint64(len(msg.Data)))
 			log.Info("replicated blob stored", "remote", peer.RemoteAddr().String(), "key", string(msg.Key), "bytes", len(msg.Data), "blobs", blobStore.Len())
 			return nil
 		}
@@ -180,7 +189,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	var hsrv *http.Server
 	if *health != "" {
 		var err error
-		hsrv, err = startHealth(*health, tr, log)
+		hsrv, err = startHealth(*health, tr, replMetrics, log)
 		if err != nil {
 			return fmt.Errorf("health: %w", err)
 		}
@@ -198,7 +207,30 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	return ctx.Err()
 }
 
-func startHealth(addr string, tr *p2p.TCPTransport, log *slog.Logger) (*http.Server, error) {
+type replicationMetrics struct {
+	BlobsStored atomic.Uint64
+	BytesStored atomic.Uint64
+	ApplyErrors atomic.Uint64
+	BlobsSent   atomic.Uint64
+	BytesSent   atomic.Uint64
+	SendErrors  atomic.Uint64
+}
+
+func (m *replicationMetrics) Snapshot() map[string]int64 {
+	if m == nil {
+		return map[string]int64{}
+	}
+	return map[string]int64{
+		"replication_blobs_stored": int64(m.BlobsStored.Load()),
+		"replication_bytes_stored": int64(m.BytesStored.Load()),
+		"replication_apply_errors": int64(m.ApplyErrors.Load()),
+		"replication_blobs_sent":   int64(m.BlobsSent.Load()),
+		"replication_bytes_sent":   int64(m.BytesSent.Load()),
+		"replication_send_errors":  int64(m.SendErrors.Load()),
+	}
+}
+
+func startHealth(addr string, tr *p2p.TCPTransport, replMetrics *replicationMetrics, log *slog.Logger) (*http.Server, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/livez", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -214,9 +246,13 @@ func startHealth(addr string, tr *p2p.TCPTransport, log *slog.Logger) (*http.Ser
 	})
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		snapshot := tr.Metrics().Snapshot()
+		for key, value := range replMetrics.Snapshot() {
+			snapshot[key] = value
+		}
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		_ = enc.Encode(tr.Metrics().Snapshot())
+		_ = enc.Encode(snapshot)
 	})
 
 	ln, err := net.Listen("tcp", addr)
