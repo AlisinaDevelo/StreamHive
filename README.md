@@ -68,6 +68,7 @@ Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside applicati
 |------|---------|
 | `-listen` | TCP listen address |
 | `-dial` | Optional peer to dial after listen |
+| `-peers` | Optional comma-separated peers to dial after listen |
 | `-health` | HTTP `host:port` for `/livez`, `/readyz`, `/metrics` |
 | `-max-peers` | Cap simultaneous peers (0 = unlimited) |
 | `-dial-timeout` | Outbound dial timeout |

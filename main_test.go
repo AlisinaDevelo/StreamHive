@@ -109,7 +109,7 @@ func TestRun_putRequiresDial(t *testing.T) {
 	var out bytes.Buffer
 	err := run(context.Background(), []string{"-put-key", "alpha", "-put-data", "hello"}, &out, io.Discard)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "-put-key requires -dial")
+	assert.Contains(t, err.Error(), "-put-key requires -dial or -peers")
 }
 
 func TestRun_replicatesBlobPutToDialPeer(t *testing.T) {
@@ -153,4 +153,48 @@ func TestRun_replicatesBlobPutToDialPeer(t *testing.T) {
 	serverCancel()
 	require.NoError(t, <-clientErrCh)
 	require.NoError(t, <-serverErrCh)
+}
+
+func TestParsePeerTargets(t *testing.T) {
+	tests := []struct {
+		name    string
+		dial    string
+		peers   string
+		want    []string
+		wantErr bool
+	}{
+		{
+			name: "single dial",
+			dial: " 127.0.0.1:7070 ",
+			want: []string{"127.0.0.1:7070"},
+		},
+		{
+			name:  "peer list",
+			peers: "127.0.0.1:7070, 127.0.0.1:7071",
+			want:  []string{"127.0.0.1:7070", "127.0.0.1:7071"},
+		},
+		{
+			name:  "dial plus peer list",
+			dial:  "127.0.0.1:7070",
+			peers: "127.0.0.1:7071",
+			want:  []string{"127.0.0.1:7070", "127.0.0.1:7071"},
+		},
+		{
+			name:    "empty peer entry",
+			peers:   "127.0.0.1:7070,",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parsePeerTargets(tt.dial, tt.peers)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

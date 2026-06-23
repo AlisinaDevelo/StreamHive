@@ -22,7 +22,7 @@
 - Listener and peer map share a mutex; the accept loop exits when the listener is closed.
 - `Close` stops new accepts, waits for the accept goroutine, then closes open peer connections. Peer goroutines remove themselves from the map on EOF / error via `unregisterPeer`.
 - Optional `FrameHandler` runs per frame on each peer session until error, context cancellation, or disconnect.
-- CLI replication installs a `FrameHandler` that decodes `blob.put` messages and writes to an in-memory `MemoryStore`. Outbound `-put-key` / `-put-data` sends one frame after `-dial` connects.
+- CLI replication installs a `FrameHandler` that decodes `blob.put` messages and writes to an in-memory `MemoryStore`. Outbound `-put-key` / `-put-data` sends one frame after `-dial` or `-peers` connects.
 
 ## Failure modes (transport)
 
@@ -50,7 +50,7 @@ sequenceDiagram
 
 Implemented:
 
-- Static peer replication over `-dial`.
+- Static peer replication over `-dial` and comma-separated `-peers`.
 - One message type: `blob.put`.
 - Receiver-side in-memory storage via `storage.MemoryStore`.
 - JSON `/metrics` counters for stored/sent blobs, bytes, and replication errors.
@@ -59,7 +59,7 @@ Not implemented yet:
 
 - CLI-configurable durable replication storage.
 - Anti-entropy, retries, or conflict resolution.
-- Peer discovery beyond static dial targets.
+- Automated peer discovery beyond static dial targets.
 - Authenticated application-level identity beyond optional TLS/mTLS configuration.
 
 ## Storage choices
@@ -72,5 +72,6 @@ Use `FileStore` when blobs must survive process restarts. Keys are hex-encoded i
 
 - Merkle or hash-linked chunk references on top of `BlobStore`
 - CLI flag for durable replication storage
-- Replication and discovery beyond one-shot static `-dial`
+- Reconnect/backoff for static peers
+- Automated discovery beyond static peers
 - Authenticated application protocol on top of `FrameHandler`

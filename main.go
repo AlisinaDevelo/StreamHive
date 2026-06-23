@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -40,6 +41,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 
 	listen := fs.String("listen", "127.0.0.1:0", "TCP listen address")
 	dial := fs.String("dial", "", "optional peer host:port to dial after listen")
+	peers := fs.String("peers", "", "comma-separated peer host:port list to dial after listen")
 	health := fs.String("health", "", "optional HTTP listen addr for /livez /readyz /metrics (e.g. :8080)")
 	maxPeers := fs.Int("max-peers", 0, "max simultaneous peers (0 = unlimited)")
 	dialTimeout := fs.Duration("dial-timeout", 0, "default dial timeout (0 = use context only)")
@@ -67,8 +69,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		_, err := fmt.Fprintln(stdout, version.Version)
 		return err
 	}
-	if *putKey != "" && *dial == "" {
-		return fmt.Errorf("replication: -put-key requires -dial")
+	peerTargets, err := parsePeerTargets(*dial, *peers)
+	if err != nil {
+		return err
+	}
+	if *putKey != "" && len(peerTargets) == 0 {
+		return fmt.Errorf("replication: -put-key requires -dial or -peers")
 	}
 
 	replLimits := replication.Limits{MaxDataBytes: *maxBlobBytes}
@@ -80,12 +86,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	var putPayload []byte
 	var putResult chan error
 	if *putKey != "" {
-		var err error
 		putPayload, err = replication.EncodeBlobPut([]byte(*putKey), []byte(*putData), replLimits)
 		if err != nil {
 			return err
 		}
-		putResult = make(chan error, 1)
+		putResult = make(chan error, len(peerTargets))
 	}
 
 	tr := p2p.NewTCPTransport(*listen)
@@ -187,17 +192,18 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	if *dial != "" {
-		if err := tr.Dial(ctx, *dial); err != nil {
-			return fmt.Errorf("dial: %w", err)
+	for _, target := range peerTargets {
+		if err := tr.Dial(ctx, target); err != nil {
+			return fmt.Errorf("dial %s: %w", target, err)
 		}
-		if *exitAfterPut && putResult != nil {
+	}
+	if *exitAfterPut && putResult != nil {
+		for range peerTargets {
 			select {
 			case err := <-putResult:
 				if err != nil {
 					return fmt.Errorf("replication: send blob: %w", err)
 				}
-				return nil
 			case <-ctx.Done():
 				if errors.Is(ctx.Err(), context.Canceled) {
 					return nil
@@ -207,6 +213,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 				return fmt.Errorf("replication: timed out waiting for blob send")
 			}
 		}
+		return nil
 	}
 
 	var hsrv *http.Server
@@ -238,6 +245,24 @@ func reportPutResult(ch chan<- error, err error) {
 	case ch <- err:
 	default:
 	}
+}
+
+func parsePeerTargets(dial, peers string) ([]string, error) {
+	targets := make([]string, 0, 1)
+	if strings.TrimSpace(dial) != "" {
+		targets = append(targets, strings.TrimSpace(dial))
+	}
+	if strings.TrimSpace(peers) == "" {
+		return targets, nil
+	}
+	for _, part := range strings.Split(peers, ",") {
+		target := strings.TrimSpace(part)
+		if target == "" {
+			return nil, fmt.Errorf("peers: empty peer address")
+		}
+		targets = append(targets, target)
+	}
+	return targets, nil
 }
 
 type replicationMetrics struct {
