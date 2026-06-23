@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/AliSinaDevelo/StreamHive/actions/workflows/ci.yml/badge.svg)](https://github.com/AliSinaDevelo/StreamHive/actions/workflows/ci.yml)
 
-StreamHive is a **Go library and CLI** for experimenting with distributed, content-addressed storage. It ships a production-minded **TCP transport** (context-aware listen/dial, TLS hooks, framing, metrics, limits), a **length-prefixed wire format** (`SHV1`), a typed **blob replication protocol**, an in-memory **blob store** API, and operational endpoints (`/livez`, `/readyz`, `/metrics`).
+StreamHive is a **Go library and CLI** for experimenting with distributed, content-addressed storage. It ships a production-minded **TCP transport** (context-aware listen/dial, TLS hooks, framing, metrics, limits), a **length-prefixed wire format** (`SHV1`), a typed **blob replication protocol**, memory and file-backed **blob stores**, and operational endpoints (`/livez`, `/readyz`, `/metrics`).
 
 **Semver:** public API versions are tracked in [CHANGELOG.md](CHANGELOG.md) and [internal/version/version.go](internal/version/version.go) (currently **v0.2.0**, pre-1.0).
 
-**Status:** networking, framing, local storage, and static-peer blob replication v0.3 are implemented. Durable storage, conflict resolution, and global discovery are not. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**Status:** networking, framing, local storage, and static-peer blob replication v0.3 are implemented. `storage.FileStore` provides durable local blobs for library users; the CLI replication demo still uses in-memory receiver storage. Conflict resolution and global discovery are not implemented. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ make demo-replication
 |--------|---------|
 | `github.com/AliSinaDevelo/StreamHive/p2p` | `TCPTransport`, framing (`ReadFrame` / `WriteFrame`), metrics |
 | `github.com/AliSinaDevelo/StreamHive/replication` | Blob replication messages (`blob.put`) and store apply helper |
-| `github.com/AliSinaDevelo/StreamHive/storage` | `BlobStore`, `MemoryStore` |
+| `github.com/AliSinaDevelo/StreamHive/storage` | `BlobStore`, `MemoryStore`, `FileStore` |
 
 Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside application frames).
 

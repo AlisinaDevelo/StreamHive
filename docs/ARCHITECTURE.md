@@ -5,7 +5,7 @@
 1. **Transport (`p2p`)** — `TCPTransport` with `context.Context` on `ListenAndAccept` / `Dial`, accept-loop shutdown coordinated with `Close`, optional TLS, optional framed reads via `FrameHandler`, metrics, and peer disconnect hooks.
 2. **Framing (`p2p`)** — `SHV1` length-prefixed payloads (`ReadFrame` / `WriteFrame`) with a configurable maximum size (DoS bound). Application-level handshake string: `HandshakeVersionV1`.
 3. **Replication (`replication`)** — typed JSON messages carried inside frames. The first supported message is `blob.put`, which writes one key/value blob to a receiving `BlobStore`.
-4. **Storage (`storage`)** — `BlobStore` interface with `MemoryStore` for tests and demos; content addressing can layer hashes as opaque keys.
+4. **Storage (`storage`)** — `BlobStore` interface with `MemoryStore` for tests/demos and `FileStore` for durable local blobs; content addressing can layer hashes as opaque keys.
 
 ## Package map
 
@@ -57,14 +57,20 @@ Implemented:
 
 Not implemented yet:
 
-- Durable blob storage.
+- CLI-configurable durable replication storage.
 - Anti-entropy, retries, or conflict resolution.
 - Peer discovery beyond static dial targets.
 - Authenticated application-level identity beyond optional TLS/mTLS configuration.
 
+## Storage choices
+
+Use `MemoryStore` for tests, examples, and short-lived CLI demos. It copies values on `Put`/`Get`, is safe for concurrent access, and loses data when the process exits.
+
+Use `FileStore` when blobs must survive process restarts. Keys are hex-encoded into file names, writes use a temporary file followed by `rename`, and missing keys map to `storage.ErrNotFound`. It is intentionally simple local storage, not a distributed database.
+
 ## Roadmap
 
 - Merkle or hash-linked chunk references on top of `BlobStore`
-- Durable blob storage behind `BlobStore`
+- CLI flag for durable replication storage
 - Replication and discovery beyond one-shot static `-dial`
 - Authenticated application protocol on top of `FrameHandler`
