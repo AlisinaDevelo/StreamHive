@@ -1,4 +1,4 @@
-.PHONY: build run test test-race vet cover lint ci help
+.PHONY: build run test test-race vet cover lint demo-replication ci help
 
 build:
 	@mkdir -p bin
@@ -23,7 +23,10 @@ cover:
 lint:
 	@golangci-lint run ./...
 
+demo-replication:
+	@./scripts/demo-replication.sh
+
 ci: vet test-race lint
 
 help:
-	@echo "Targets: build run test test-race vet cover lint ci"
+	@echo "Targets: build run test test-race vet cover lint demo-replication ci"

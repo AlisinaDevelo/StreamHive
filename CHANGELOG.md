@@ -8,8 +8,9 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 
 - **`replication`**: typed blob replication protocol with `blob.put` encoding, decoding, validation limits, and `BlobStore` apply helper.
 - **`p2p`**: `TCPPeer.WriteFrame` convenience method for framed peer writes.
-- **CLI**: `-replicate`, `-put-key`, `-put-data`, and `-max-blob-bytes` for a static two-node in-memory replication demo.
+- **CLI**: `-replicate`, `-put-key`, `-put-data`, `-exit-after-put`, and `-max-blob-bytes` for a static two-node in-memory replication demo.
 - **Metrics**: replication counters for stored/sent blobs, stored/sent bytes, and replication errors.
+- **Demo**: `make demo-replication` starts a receiver, sends one blob, waits for metrics, and prints the evidence.
 
 ## [0.2.0] — 2026-04-05
 

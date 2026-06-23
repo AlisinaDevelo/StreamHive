@@ -35,7 +35,7 @@ go run . -listen 127.0.0.1:7070 -replicate -health 127.0.0.1:8080
 Terminal 2: dial the receiver and send one blob.
 
 ```bash
-go run . -listen 127.0.0.1:0 -dial 127.0.0.1:7070 -put-key demo -put-data "hello streamhive"
+go run . -listen 127.0.0.1:0 -dial 127.0.0.1:7070 -put-key demo -put-data "hello streamhive" -exit-after-put
 ```
 
 Inspect counters:
@@ -45,6 +45,12 @@ curl -s http://127.0.0.1:8080/metrics
 ```
 
 Look for `replication_blobs_stored`, `replication_bytes_stored`, and transport frame counters. The receiver stores blobs in memory for this v0.3 path.
+
+Or run the whole flow:
+
+```bash
+make demo-replication
+```
 
 ### Library packages
 
@@ -70,6 +76,7 @@ Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside applicati
 | `-tls-ca` / `-tls-server-name` / `-tls-insecure-skip-verify` | Client TLS |
 | `-replicate` | Enable in-memory blob replication from framed peers |
 | `-put-key` / `-put-data` | Send one blob to the `-dial` peer |
+| `-exit-after-put` | Exit after the outbound blob frame is written |
 | `-max-blob-bytes` | Cap replicated blob payload size |
 
 See the [Makefile](Makefile) for `test-race`, `vet`, `cover`, and `lint`.
