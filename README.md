@@ -123,6 +123,7 @@ flowchart TB
 - [docs/WORKFLOWS.md](docs/WORKFLOWS.md) — local and CI expectations.
 - [docs/GOVERNANCE.md](docs/GOVERNANCE.md) — branch protection and release hygiene.
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Docker and Kubernetes sketch.
+- [docs/RELEASE.md](docs/RELEASE.md) — v0.3.0 release checklist.
 
 ## Contributing
 
