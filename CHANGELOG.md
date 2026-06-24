@@ -7,6 +7,7 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 ### Added
 
 - **`storage`**: SHA-256 content key helpers for content-addressed blob IDs.
+- **`storage`**: `BlobKeyLister` interface plus deterministic `ListKeys` support for memory and file stores.
 - **`replication`**: `blob.has`, `blob.get`, and `blob.missing` message types for future anti-entropy sync.
 
 ## [0.3.0] — 2026-06-24

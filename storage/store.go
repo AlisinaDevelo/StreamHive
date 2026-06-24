@@ -9,3 +9,8 @@ type BlobStore interface {
 	Has(ctx context.Context, key []byte) (bool, error)
 	Delete(ctx context.Context, key []byte) error
 }
+
+// BlobKeyLister is implemented by stores that can enumerate known blob keys.
+type BlobKeyLister interface {
+	ListKeys(ctx context.Context) ([][]byte, error)
+}

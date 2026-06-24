@@ -86,6 +86,28 @@ func TestFileStore_Delete(t *testing.T) {
 	assert.False(t, has)
 }
 
+func TestFileStore_ListKeysRestart(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := NewFileStore(dir)
+	require.NoError(t, err)
+
+	require.NoError(t, store.Put(ctx, []byte("b"), []byte("2")))
+	require.NoError(t, store.Put(ctx, []byte("a"), []byte("1")))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".streamhive-temp"), []byte("tmp"), 0o600))
+
+	reopened, err := NewFileStore(dir)
+	require.NoError(t, err)
+	keys, err := reopened.ListKeys(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{[]byte("a"), []byte("b")}, keys)
+
+	keys[0][0] = 'x'
+	again, err := reopened.ListKeys(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{[]byte("a"), []byte("b")}, again)
+}
+
 func TestFileStore_EmptyKey(t *testing.T) {
 	ctx := context.Background()
 	store, err := NewFileStore(t.TempDir())
@@ -103,6 +125,16 @@ func TestFileStore_ContextDeadline(t *testing.T) {
 
 	assert.Error(t, store.Put(ctx, []byte("k"), []byte("value")))
 	_, err = store.Get(ctx, []byte("k"))
+	assert.Error(t, err)
+}
+
+func TestFileStore_ListKeysContextDeadline(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	store, err := NewFileStore(t.TempDir())
+	require.NoError(t, err)
+
+	_, err = store.ListKeys(ctx)
 	assert.Error(t, err)
 }
 

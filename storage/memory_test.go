@@ -86,10 +86,34 @@ func TestMemoryStore_Len(t *testing.T) {
 	assert.Equal(t, 1, s.Len())
 }
 
+func TestMemoryStore_ListKeys(t *testing.T) {
+	ctx := context.Background()
+	s := NewMemoryStore()
+	require.NoError(t, s.Put(ctx, []byte("b"), []byte("2")))
+	require.NoError(t, s.Put(ctx, []byte("a"), []byte("1")))
+
+	keys, err := s.ListKeys(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{[]byte("a"), []byte("b")}, keys)
+
+	keys[0][0] = 'x'
+	again, err := s.ListKeys(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{[]byte("a"), []byte("b")}, again)
+}
+
 func TestMemoryStore_ContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
 	s := NewMemoryStore()
 	_, err := s.Get(ctx, []byte("k"))
+	assert.Error(t, err)
+}
+
+func TestMemoryStore_ListKeysContextDeadline(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	s := NewMemoryStore()
+	_, err := s.ListKeys(ctx)
 	assert.Error(t, err)
 }

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // FileStore stores blobs as files named by hex-encoded keys.
@@ -123,4 +125,31 @@ func (s *FileStore) Delete(ctx context.Context, key []byte) error {
 	return nil
 }
 
+// ListKeys returns all known keys in deterministic bytewise order.
+func (s *FileStore) ListKeys(ctx context.Context) ([][]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return nil, err
+	}
+	keys := make([][]byte, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".streamhive-") {
+			continue
+		}
+		key, err := hex.DecodeString(entry.Name())
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return string(keys[i]) < string(keys[j])
+	})
+	return keys, nil
+}
+
 var _ BlobStore = (*FileStore)(nil)
+var _ BlobKeyLister = (*FileStore)(nil)

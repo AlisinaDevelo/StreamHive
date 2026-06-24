@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 )
 
@@ -112,3 +113,22 @@ func (m *MemoryStore) Snapshot() map[string][]byte {
 	}
 	return out
 }
+
+// ListKeys returns all known keys in deterministic bytewise order.
+func (m *MemoryStore) ListKeys(ctx context.Context) ([][]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	keys := make([][]byte, 0, len(m.data))
+	for k := range m.data {
+		keys = append(keys, []byte(k))
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return string(keys[i]) < string(keys[j])
+	})
+	return keys, nil
+}
+
+var _ BlobKeyLister = (*MemoryStore)(nil)

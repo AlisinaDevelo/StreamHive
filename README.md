@@ -72,7 +72,7 @@ go run . -listen 127.0.0.1:7070 -replicate -store-dir ./streamhive-data
 |--------|---------|
 | `github.com/AliSinaDevelo/StreamHive/p2p` | `TCPTransport`, framing (`ReadFrame` / `WriteFrame`), metrics |
 | `github.com/AliSinaDevelo/StreamHive/replication` | Blob replication messages (`blob.put`) and store apply helper |
-| `github.com/AliSinaDevelo/StreamHive/storage` | `BlobStore`, `MemoryStore`, `FileStore`, SHA-256 content key helpers |
+| `github.com/AliSinaDevelo/StreamHive/storage` | `BlobStore`, `BlobKeyLister`, `MemoryStore`, `FileStore`, SHA-256 content key helpers |
 
 Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside application frames).
 
