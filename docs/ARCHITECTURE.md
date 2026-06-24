@@ -22,7 +22,7 @@
 - Listener and peer map share a mutex; the accept loop exits when the listener is closed.
 - `Close` stops new accepts, waits for the accept goroutine, then closes open peer connections. Peer goroutines remove themselves from the map on EOF / error via `unregisterPeer`.
 - Optional `FrameHandler` runs per frame on each peer session until error, context cancellation, or disconnect.
-- CLI replication installs a `FrameHandler` that decodes `blob.put` messages and writes to an in-memory `MemoryStore`. Outbound `-put-key` / `-put-data` sends one frame after `-dial` or `-peers` connects.
+- CLI replication installs a `FrameHandler` that decodes `blob.put` messages and writes to `MemoryStore` by default, or `FileStore` when `-store-dir` is set. Outbound `-put-key` / `-put-data` sends one frame after `-dial` or `-peers` connects.
 - `-peer-reconnect` manages only static `-peers` targets. It retries failed dials with exponential backoff and schedules another retry when an outbound configured peer disconnects.
 
 ## Failure modes (transport)
@@ -54,25 +54,23 @@ Implemented:
 - Static peer replication over `-dial` and comma-separated `-peers`.
 - Optional reconnect/backoff for `-peers`.
 - One message type: `blob.put`.
-- Receiver-side in-memory storage via `storage.MemoryStore`.
+- Receiver-side storage via `storage.MemoryStore` or durable `storage.FileStore` with `-store-dir`.
 - JSON `/metrics` counters for stored/sent blobs, bytes, and replication errors.
 
 Not implemented yet:
 
-- CLI-configurable durable replication storage.
 - Anti-entropy, retries, or conflict resolution.
 - Automated peer discovery beyond static dial targets.
 - Authenticated application-level identity beyond optional TLS/mTLS configuration.
 
 ## Storage choices
 
-Use `MemoryStore` for tests, examples, and short-lived CLI demos. It copies values on `Put`/`Get`, is safe for concurrent access, and loses data when the process exits.
+Use `MemoryStore` for tests, examples, and short-lived CLI demos. It copies values on `Put`/`Get`, is safe for concurrent access, and loses data when the process exits. CLI replication uses this by default.
 
-Use `FileStore` when blobs must survive process restarts. Keys are hex-encoded into file names, writes use a temporary file followed by `rename`, and missing keys map to `storage.ErrNotFound`. It is intentionally simple local storage, not a distributed database.
+Use `FileStore` when blobs must survive process restarts. Keys are hex-encoded into file names, writes use a temporary file followed by `rename`, and missing keys map to `storage.ErrNotFound`. CLI replication uses this when `-store-dir` is set. It is intentionally simple local storage, not a distributed database.
 
 ## Roadmap
 
 - Merkle or hash-linked chunk references on top of `BlobStore`
-- CLI flag for durable replication storage
 - Automated discovery beyond static peers
 - Authenticated application protocol on top of `FrameHandler`

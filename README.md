@@ -6,7 +6,7 @@ StreamHive is a **Go library and CLI** for experimenting with distributed, conte
 
 **Semver:** public API versions are tracked in [CHANGELOG.md](CHANGELOG.md) and [internal/version/version.go](internal/version/version.go) (currently **v0.2.0**, pre-1.0).
 
-**Status:** networking, framing, local storage, and static-peer blob replication v0.3 are implemented. `storage.FileStore` provides durable local blobs for library users; the CLI replication demo still uses in-memory receiver storage. Conflict resolution and global discovery are not implemented. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**Status:** networking, framing, local storage, and static-peer blob replication v0.3 are implemented. `storage.FileStore` provides durable local blobs for library users and CLI receivers via `-store-dir`. Conflict resolution and global discovery are not implemented. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Prerequisites
 
@@ -60,6 +60,12 @@ go run . -listen 127.0.0.1:7071 -peers 127.0.0.1:7070,127.0.0.1:7072 -peer-recon
 
 `-peer-reconnect` retries only `-peers` targets. `-dial` stays a one-shot connection attempt for scripts and tests.
 
+To persist replicated blobs on the receiver, add `-store-dir`:
+
+```bash
+go run . -listen 127.0.0.1:7070 -replicate -store-dir ./streamhive-data
+```
+
 ### Library packages
 
 | Import | Purpose |
@@ -85,7 +91,8 @@ Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside applicati
 | `-read-idle-timeout` | Peer read deadline refresh |
 | `-tls-cert` / `-tls-key` | Server TLS |
 | `-tls-ca` / `-tls-server-name` / `-tls-insecure-skip-verify` | Client TLS |
-| `-replicate` | Enable in-memory blob replication from framed peers |
+| `-replicate` | Enable blob replication from framed peers |
+| `-store-dir` | Persist replicated blobs with `storage.FileStore` |
 | `-put-key` / `-put-data` | Send one blob to the `-dial` peer |
 | `-exit-after-put` | Exit after the outbound blob frame is written |
 | `-max-blob-bytes` | Cap replicated blob payload size |
