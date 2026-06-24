@@ -52,6 +52,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	readIdle := fs.Duration("read-idle-timeout", 0, "TCP read deadline refresh for peer loops (0 = none for discard mode)")
 	showVer := fs.Bool("version", false, "print version and exit")
 	replicate := fs.Bool("replicate", false, "enable in-memory blob replication from framed peers")
+	storeDir := fs.String("store-dir", "", "directory for durable replicated blobs (requires -replicate)")
 	putKey := fs.String("put-key", "", "send one replicated blob key to -dial peer")
 	putData := fs.String("put-data", "", "send one replicated blob value to -dial peer")
 	exitAfterPut := fs.Bool("exit-after-put", false, "exit after sending -put-key to the dialed peer")
@@ -93,12 +94,25 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 	}
+	if *storeDir != "" && !*replicate {
+		return fmt.Errorf("storage: -store-dir requires -replicate")
+	}
 
 	replLimits := replication.Limits{MaxDataBytes: *maxBlobBytes}
-	var blobStore *storage.MemoryStore
+	var blobStore storage.BlobStore
+	var memoryStore *storage.MemoryStore
 	replMetrics := &replicationMetrics{}
 	if *replicate {
-		blobStore = storage.NewMemoryStore()
+		if *storeDir != "" {
+			var err error
+			blobStore, err = storage.NewFileStore(*storeDir)
+			if err != nil {
+				return fmt.Errorf("storage: open file store: %w", err)
+			}
+		} else {
+			memoryStore = storage.NewMemoryStore()
+			blobStore = memoryStore
+		}
 	}
 	var putPayload []byte
 	var putResult chan error
@@ -153,7 +167,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			}
 			replMetrics.BlobsStored.Add(1)
 			replMetrics.BytesStored.Add(uint64(len(msg.Data)))
-			log.Info("replicated blob stored", "remote", peer.RemoteAddr().String(), "key", string(msg.Key), "bytes", len(msg.Data), "blobs", blobStore.Len())
+			attrs := []any{"remote", peer.RemoteAddr().String(), "key", string(msg.Key), "bytes", len(msg.Data)}
+			if memoryStore != nil {
+				attrs = append(attrs, "blobs", memoryStore.Len())
+			}
+			log.Info("replicated blob stored", attrs...)
 			return nil
 		}
 	}

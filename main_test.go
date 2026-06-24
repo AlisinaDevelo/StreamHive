@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/AliSinaDevelo/StreamHive/p2p"
+	"github.com/AliSinaDevelo/StreamHive/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -116,6 +117,13 @@ func TestRun_putRequiresDial(t *testing.T) {
 	assert.Contains(t, err.Error(), "-put-key requires -dial or -peers")
 }
 
+func TestRun_storeDirRequiresReplicate(t *testing.T) {
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"-store-dir", t.TempDir()}, &out, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "-store-dir requires -replicate")
+}
+
 func TestRun_peerReconnectRequiresPeers(t *testing.T) {
 	var out bytes.Buffer
 	err := run(context.Background(), []string{"-peer-reconnect"}, &out, io.Discard)
@@ -175,6 +183,51 @@ func TestRun_replicatesBlobPutToDialPeer(t *testing.T) {
 
 	serverCancel()
 	require.NoError(t, <-clientErrCh)
+	require.NoError(t, <-serverErrCh)
+}
+
+func TestRun_replicatesBlobPutToFileStore(t *testing.T) {
+	storeDir := t.TempDir()
+	serverCtx, serverCancel := context.WithCancel(context.Background())
+	defer serverCancel()
+	var serverOut, serverErr safeBuffer
+	serverErrCh := make(chan error, 1)
+	go func() {
+		serverErrCh <- run(serverCtx, []string{
+			"-listen", "127.0.0.1:0",
+			"-replicate",
+			"-store-dir", storeDir,
+		}, &serverOut, &serverErr)
+	}()
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(serverOut.String(), "listening on")
+	}, 3*time.Second, 20*time.Millisecond)
+
+	re := regexp.MustCompile(`listening on ([^\n]+)`)
+	m := re.FindStringSubmatch(serverOut.String())
+	require.Len(t, m, 2, "stdout=%q", serverOut.String())
+
+	var clientOut, clientErr safeBuffer
+	err := run(context.Background(), []string{
+		"-listen", "127.0.0.1:0",
+		"-dial", m[1],
+		"-put-key", "durable",
+		"-put-data", "persist me",
+		"-exit-after-put",
+	}, &clientOut, &clientErr)
+	require.NoError(t, err, "client logs=%q", clientErr.String())
+
+	require.Eventually(t, func() bool {
+		store, err := storage.NewFileStore(storeDir)
+		if err != nil {
+			return false
+		}
+		got, err := store.Get(context.Background(), []byte("durable"))
+		return err == nil && string(got) == "persist me"
+	}, 3*time.Second, 20*time.Millisecond, "server logs=%q", serverErr.String())
+
+	serverCancel()
 	require.NoError(t, <-serverErrCh)
 }
 
