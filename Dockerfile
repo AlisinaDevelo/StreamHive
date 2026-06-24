@@ -10,6 +10,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/streamhive .
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates
+RUN mkdir -p /data && chown -R nobody:nobody /data
 COPY --from=build /out/streamhive /usr/local/bin/streamhive
 USER nobody
 EXPOSE 7070 8080

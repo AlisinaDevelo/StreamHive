@@ -16,6 +16,22 @@ docker run --rm -p 7070:7070 -p 8080:8080 streamhive:local \
 
 Use TLS flags (`-tls-cert`, `-tls-key`, `-tls-ca`, …) when exposing services beyond a lab network.
 
+## Docker Compose demo
+
+Run a local 3-node cluster:
+
+```bash
+make demo-compose
+```
+
+The demo builds `streamhive:local`, starts node1, seeds one blob, starts node2 and node3, verifies node3 receives the blob, wipes node3's local demo data, restarts node3, and verifies startup anti-entropy rehydrates the blob again.
+
+Health endpoints are exposed on:
+
+- **node1**: <http://127.0.0.1:18081>
+- **node2**: <http://127.0.0.1:18082>
+- **node3**: <http://127.0.0.1:18083>
+
 ## Kubernetes (minimal)
 
 ```yaml

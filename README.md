@@ -52,6 +52,12 @@ Or run the whole flow:
 make demo-replication
 ```
 
+For a 3-node Docker Compose demo with durable stores and node restart rehydration:
+
+```bash
+make demo-compose
+```
+
 For a longer-lived node with static peers, use `-peers` and reconnect backoff:
 
 ```bash

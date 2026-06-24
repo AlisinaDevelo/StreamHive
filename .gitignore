@@ -4,6 +4,7 @@ bin/
 *.out
 coverage.out
 coverage.html
+.streamhive-compose/
 .DS_Store
 .idea/
 .vscode/

@@ -1,0 +1,82 @@
+services:
+  node1:
+    build: .
+    image: streamhive:local
+    command:
+      - -listen
+      - 0.0.0.0:7070
+      - -health
+      - 0.0.0.0:8080
+      - -replicate
+      - -store-dir
+      - /data
+      - -peers
+      - node2:7070,node3:7070
+      - -peer-reconnect
+      - -peer-reconnect-min
+      - 200ms
+      - -peer-reconnect-max
+      - 2s
+    ports:
+      - "18081:8080"
+    volumes:
+      - ${STREAMHIVE_DATA_DIR:-./.streamhive-compose}/node1:/data
+
+  node2:
+    image: streamhive:local
+    command:
+      - -listen
+      - 0.0.0.0:7070
+      - -health
+      - 0.0.0.0:8080
+      - -replicate
+      - -store-dir
+      - /data
+      - -peers
+      - node1:7070,node3:7070
+      - -peer-reconnect
+      - -peer-reconnect-min
+      - 200ms
+      - -peer-reconnect-max
+      - 2s
+    ports:
+      - "18082:8080"
+    volumes:
+      - ${STREAMHIVE_DATA_DIR:-./.streamhive-compose}/node2:/data
+
+  node3:
+    image: streamhive:local
+    command:
+      - -listen
+      - 0.0.0.0:7070
+      - -health
+      - 0.0.0.0:8080
+      - -replicate
+      - -store-dir
+      - /data
+      - -peers
+      - node1:7070,node2:7070
+      - -peer-reconnect
+      - -peer-reconnect-min
+      - 200ms
+      - -peer-reconnect-max
+      - 2s
+    ports:
+      - "18083:8080"
+    volumes:
+      - ${STREAMHIVE_DATA_DIR:-./.streamhive-compose}/node3:/data
+
+  seed:
+    image: streamhive:local
+    command:
+      - -listen
+      - 127.0.0.1:0
+      - -dial
+      - node1:7070
+      - -put-key
+      - compose-demo
+      - -put-data
+      - hello from compose
+      - -exit-after-put
+    profiles:
+      - tools

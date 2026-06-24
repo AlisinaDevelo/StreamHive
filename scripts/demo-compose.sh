@@ -1,0 +1,70 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+DATA_DIR="${STREAMHIVE_DATA_DIR:-$ROOT_DIR/.streamhive-compose}"
+COMPOSE="docker compose"
+export STREAMHIVE_DATA_DIR="$DATA_DIR"
+
+cleanup() {
+	$COMPOSE -f "$ROOT_DIR/docker-compose.yml" down --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
+wait_ready() {
+	name="$1"
+	url="$2"
+	i=0
+	until curl -fsS "$url/readyz" >/dev/null 2>&1; do
+		i=$((i + 1))
+		if [ "$i" -gt 80 ]; then
+			echo "$name did not become ready" >&2
+			$COMPOSE -f "$ROOT_DIR/docker-compose.yml" logs "$name" >&2 || true
+			exit 1
+		fi
+		sleep 0.25
+	done
+}
+
+wait_stored() {
+	name="$1"
+	url="$2"
+	i=0
+	until curl -fsS "$url/metrics" | grep '"replication_blobs_stored": 1' >/dev/null; do
+		i=$((i + 1))
+		if [ "$i" -gt 80 ]; then
+			echo "$name did not store replicated blob" >&2
+			$COMPOSE -f "$ROOT_DIR/docker-compose.yml" logs "$name" >&2 || true
+			exit 1
+		fi
+		sleep 0.25
+	done
+}
+
+cleanup
+rm -rf "$DATA_DIR"
+mkdir -p "$DATA_DIR/node1" "$DATA_DIR/node2" "$DATA_DIR/node3"
+chmod -R 0777 "$DATA_DIR"
+
+$COMPOSE -f "$ROOT_DIR/docker-compose.yml" build
+$COMPOSE -f "$ROOT_DIR/docker-compose.yml" up -d node1
+wait_ready node1 http://127.0.0.1:18081
+
+$COMPOSE -f "$ROOT_DIR/docker-compose.yml" --profile tools run --rm seed
+$COMPOSE -f "$ROOT_DIR/docker-compose.yml" up -d node2 node3
+wait_ready node2 http://127.0.0.1:18082
+wait_ready node3 http://127.0.0.1:18083
+wait_stored node3 http://127.0.0.1:18083
+
+$COMPOSE -f "$ROOT_DIR/docker-compose.yml" stop node3
+$COMPOSE -f "$ROOT_DIR/docker-compose.yml" rm -f node3
+rm -rf "$DATA_DIR/node3"
+mkdir -p "$DATA_DIR/node3"
+chmod 0777 "$DATA_DIR/node3"
+$COMPOSE -f "$ROOT_DIR/docker-compose.yml" up -d node3
+wait_ready node3 http://127.0.0.1:18083
+wait_stored node3 http://127.0.0.1:18083
+
+echo "3-node compose demo passed: node3 rehydrated the blob after restart"
+curl -fsS http://127.0.0.1:18083/metrics
+echo
