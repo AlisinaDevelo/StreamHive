@@ -100,6 +100,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 
 	replLimits := replication.Limits{MaxDataBytes: *maxBlobBytes}
 	var blobStore storage.BlobStore
+	var keyLister storage.BlobKeyLister
 	var memoryStore *storage.MemoryStore
 	replMetrics := &replicationMetrics{}
 	if *replicate {
@@ -112,6 +113,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		} else {
 			memoryStore = storage.NewMemoryStore()
 			blobStore = memoryStore
+		}
+		if lister, ok := blobStore.(storage.BlobKeyLister); ok {
+			keyLister = lister
 		}
 	}
 	var putPayload []byte
@@ -131,28 +135,26 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	tr.ReadIdleTimeout = *readIdle
 	tr.OnPeer = func(peer p2p.Peer) {
 		log.Info("peer", "remote", peer.RemoteAddr().String(), "outbound", peer.IsOutbound())
-		if putPayload == nil || !peer.IsOutbound() {
-			return
+		if putPayload != nil && peer.IsOutbound() {
+			if err := writePeerFrame(peer, putPayload, tr.MaxFrameBytes); err != nil {
+				replMetrics.SendErrors.Add(1)
+				reportPutResult(putResult, err)
+				log.Error("replication send", "remote", peer.RemoteAddr().String(), "err", err)
+				_ = peer.Close()
+				return
+			}
+			replMetrics.BlobsSent.Add(1)
+			replMetrics.BytesSent.Add(uint64(len(*putData)))
+			reportPutResult(putResult, nil)
+			log.Info("replicated blob sent", "remote", peer.RemoteAddr().String(), "key", *putKey, "bytes", len(*putData))
 		}
-		tcpPeer, ok := peer.(*p2p.TCPPeer)
-		if !ok {
-			err := errors.New("peer is not TCP-backed")
-			reportPutResult(putResult, err)
-			log.Error("replication send", "err", err)
-			_ = peer.Close()
-			return
+		if keyLister != nil {
+			if err := sendBlobHas(ctx, peer, keyLister, replLimits, tr.MaxFrameBytes); err != nil {
+				replMetrics.SendErrors.Add(1)
+				log.Error("replication inventory send", "remote", peer.RemoteAddr().String(), "err", err)
+				_ = peer.Close()
+			}
 		}
-		if err := tcpPeer.WriteFrame(putPayload, tr.MaxFrameBytes); err != nil {
-			replMetrics.SendErrors.Add(1)
-			reportPutResult(putResult, err)
-			log.Error("replication send", "remote", peer.RemoteAddr().String(), "err", err)
-			_ = peer.Close()
-			return
-		}
-		replMetrics.BlobsSent.Add(1)
-		replMetrics.BytesSent.Add(uint64(len(*putData)))
-		reportPutResult(putResult, nil)
-		log.Info("replicated blob sent", "remote", peer.RemoteAddr().String(), "key", *putKey, "bytes", len(*putData))
 	}
 	if blobStore != nil {
 		tr.FrameHandler = func(ctx context.Context, peer p2p.Peer, payload []byte) error {
@@ -161,17 +163,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 				replMetrics.ApplyErrors.Add(1)
 				return err
 			}
-			if err := blobStore.Put(ctx, msg.Key, msg.Data); err != nil {
+			if err := handleReplicationMessage(ctx, peer, blobStore, keyLister, msg, replLimits, tr.MaxFrameBytes, replMetrics, log, memoryStore); err != nil {
 				replMetrics.ApplyErrors.Add(1)
 				return err
 			}
-			replMetrics.BlobsStored.Add(1)
-			replMetrics.BytesStored.Add(uint64(len(msg.Data)))
-			attrs := []any{"remote", peer.RemoteAddr().String(), "key", string(msg.Key), "bytes", len(msg.Data)}
-			if memoryStore != nil {
-				attrs = append(attrs, "blobs", memoryStore.Len())
-			}
-			log.Info("replicated blob stored", attrs...)
 			return nil
 		}
 	}
@@ -294,6 +289,133 @@ func reportPutResult(ch chan<- error, err error) {
 	case ch <- err:
 	default:
 	}
+}
+
+func handleReplicationMessage(
+	ctx context.Context,
+	peer p2p.Peer,
+	store storage.BlobStore,
+	lister storage.BlobKeyLister,
+	msg replication.Message,
+	limits replication.Limits,
+	maxFrameBytes int,
+	metrics *replicationMetrics,
+	log *slog.Logger,
+	memoryStore *storage.MemoryStore,
+) error {
+	switch msg.Type {
+	case replication.MessageTypeBlobPut:
+		if err := store.Put(ctx, msg.Key, msg.Data); err != nil {
+			return err
+		}
+		metrics.BlobsStored.Add(1)
+		metrics.BytesStored.Add(uint64(len(msg.Data)))
+		attrs := []any{"remote", peer.RemoteAddr().String(), "key", string(msg.Key), "bytes", len(msg.Data)}
+		if memoryStore != nil {
+			attrs = append(attrs, "blobs", memoryStore.Len())
+		}
+		log.Info("replicated blob stored", attrs...)
+		return nil
+	case replication.MessageTypeBlobHas:
+		if lister == nil {
+			return nil
+		}
+		localKeys, err := lister.ListKeys(ctx)
+		if err != nil {
+			return err
+		}
+		missing := missingKeys(msg.Keys, localKeys)
+		if len(missing) == 0 {
+			return nil
+		}
+		payload, err := replication.EncodeBlobMissing(missing, limits)
+		if err != nil {
+			return err
+		}
+		if err := writePeerFrame(peer, payload, maxFrameBytes); err != nil {
+			metrics.SendErrors.Add(1)
+			return err
+		}
+		log.Info("replication missing sent", "remote", peer.RemoteAddr().String(), "keys", len(missing))
+		return nil
+	case replication.MessageTypeBlobMissing:
+		return sendRequestedBlobs(ctx, peer, store, msg.Keys, limits, maxFrameBytes, metrics, log)
+	case replication.MessageTypeBlobGet:
+		return sendRequestedBlobs(ctx, peer, store, [][]byte{msg.Key}, limits, maxFrameBytes, metrics, log)
+	default:
+		return replication.ErrUnknownMessageType
+	}
+}
+
+func sendBlobHas(ctx context.Context, peer p2p.Peer, lister storage.BlobKeyLister, limits replication.Limits, maxFrameBytes int) error {
+	keys, err := lister.ListKeys(ctx)
+	if err != nil {
+		return err
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	payload, err := replication.EncodeBlobHas(keys, limits)
+	if err != nil {
+		return err
+	}
+	return writePeerFrame(peer, payload, maxFrameBytes)
+}
+
+func sendRequestedBlobs(
+	ctx context.Context,
+	peer p2p.Peer,
+	store storage.BlobStore,
+	keys [][]byte,
+	limits replication.Limits,
+	maxFrameBytes int,
+	metrics *replicationMetrics,
+	log *slog.Logger,
+) error {
+	for _, key := range keys {
+		data, err := store.Get(ctx, key)
+		if errors.Is(err, storage.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		payload, err := replication.EncodeBlobPut(key, data, limits)
+		if err != nil {
+			return err
+		}
+		if err := writePeerFrame(peer, payload, maxFrameBytes); err != nil {
+			metrics.SendErrors.Add(1)
+			return err
+		}
+		metrics.BlobsSent.Add(1)
+		metrics.BytesSent.Add(uint64(len(data)))
+		log.Info("replicated blob sent", "remote", peer.RemoteAddr().String(), "key", string(key), "bytes", len(data))
+	}
+	return nil
+}
+
+func writePeerFrame(peer p2p.Peer, payload []byte, maxFrameBytes int) error {
+	tcpPeer, ok := peer.(*p2p.TCPPeer)
+	if !ok {
+		return errors.New("peer is not TCP-backed")
+	}
+	return tcpPeer.WriteFrame(payload, maxFrameBytes)
+}
+
+func missingKeys(remoteKeys, localKeys [][]byte) [][]byte {
+	local := make(map[string]struct{}, len(localKeys))
+	for _, key := range localKeys {
+		local[string(key)] = struct{}{}
+	}
+	missing := make([][]byte, 0)
+	for _, key := range remoteKeys {
+		if _, ok := local[string(key)]; ok {
+			continue
+		}
+		missing = append(missing, append([]byte(nil), key...))
+	}
+	return missing
 }
 
 type peerReconnector struct {

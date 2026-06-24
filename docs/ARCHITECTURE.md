@@ -24,6 +24,7 @@
 - Optional `FrameHandler` runs per frame on each peer session until error, context cancellation, or disconnect.
 - CLI replication installs a `FrameHandler` that decodes `blob.put` messages and writes to `MemoryStore` by default, or `FileStore` when `-store-dir` is set. Outbound `-put-key` / `-put-data` sends one frame after `-dial` or `-peers` connects.
 - `-peer-reconnect` manages only static `-peers` targets. It retries failed dials with exponential backoff and schedules another retry when an outbound configured peer disconnects.
+- Replication peers advertise local keys on connect. Receivers reply with `blob.missing`, and owners send the requested blobs with `blob.put`.
 
 ## Failure modes (transport)
 
@@ -55,12 +56,13 @@ Implemented:
 - Optional reconnect/backoff for `-peers`.
 - One message type: `blob.put`.
 - Sync message vocabulary: `blob.has`, `blob.get`, and `blob.missing`.
+- Startup anti-entropy for connected `-replicate` peers.
 - Receiver-side storage via `storage.MemoryStore` or durable `storage.FileStore` with `-store-dir`.
 - JSON `/metrics` counters for stored/sent blobs, bytes, and replication errors.
 
 Not implemented yet:
 
-- Anti-entropy, retries, or conflict resolution.
+- Continuous anti-entropy, retries for partial sync failures, or conflict resolution.
 - Automated peer discovery beyond static dial targets.
 - Authenticated application-level identity beyond optional TLS/mTLS configuration.
 

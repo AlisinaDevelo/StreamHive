@@ -60,6 +60,8 @@ go run . -listen 127.0.0.1:7071 -peers 127.0.0.1:7070,127.0.0.1:7072 -peer-recon
 
 `-peer-reconnect` retries only `-peers` targets. `-dial` stays a one-shot connection attempt for scripts and tests.
 
+When both sides run with `-replicate`, peers advertise local keys on connect and send missing blobs to each other. This startup anti-entropy path works with memory storage and durable `-store-dir` receivers.
+
 To persist replicated blobs on the receiver, add `-store-dir`:
 
 ```bash

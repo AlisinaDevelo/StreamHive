@@ -231,6 +231,65 @@ func TestRun_replicatesBlobPutToFileStore(t *testing.T) {
 	require.NoError(t, <-serverErrCh)
 }
 
+func TestRun_syncsMissingBlobOnConnect(t *testing.T) {
+	sourceDir := t.TempDir()
+	targetDir := t.TempDir()
+	ctx := context.Background()
+	data := []byte("sync me")
+	key := storage.SHA256Key(data)
+
+	sourceStore, err := storage.NewFileStore(sourceDir)
+	require.NoError(t, err)
+	require.NoError(t, sourceStore.Put(ctx, key, data))
+
+	sourceCtx, sourceCancel := context.WithCancel(context.Background())
+	defer sourceCancel()
+	var sourceOut, sourceErr safeBuffer
+	sourceErrCh := make(chan error, 1)
+	go func() {
+		sourceErrCh <- run(sourceCtx, []string{
+			"-listen", "127.0.0.1:0",
+			"-replicate",
+			"-store-dir", sourceDir,
+		}, &sourceOut, &sourceErr)
+	}()
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(sourceOut.String(), "listening on")
+	}, 3*time.Second, 20*time.Millisecond)
+
+	re := regexp.MustCompile(`listening on ([^\n]+)`)
+	m := re.FindStringSubmatch(sourceOut.String())
+	require.Len(t, m, 2, "stdout=%q", sourceOut.String())
+
+	targetCtx, targetCancel := context.WithCancel(context.Background())
+	defer targetCancel()
+	var targetOut, targetErr safeBuffer
+	targetErrCh := make(chan error, 1)
+	go func() {
+		targetErrCh <- run(targetCtx, []string{
+			"-listen", "127.0.0.1:0",
+			"-replicate",
+			"-store-dir", targetDir,
+			"-dial", m[1],
+		}, &targetOut, &targetErr)
+	}()
+
+	require.Eventually(t, func() bool {
+		targetStore, err := storage.NewFileStore(targetDir)
+		if err != nil {
+			return false
+		}
+		got, err := targetStore.Get(context.Background(), key)
+		return err == nil && string(got) == string(data)
+	}, 3*time.Second, 20*time.Millisecond, "source logs=%q target logs=%q", sourceErr.String(), targetErr.String())
+
+	targetCancel()
+	sourceCancel()
+	require.NoError(t, <-targetErrCh)
+	require.NoError(t, <-sourceErrCh)
+}
+
 func TestParsePeerTargets(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -273,6 +332,21 @@ func TestParsePeerTargets(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestMissingKeys(t *testing.T) {
+	missing := missingKeys(
+		[][]byte{[]byte("a"), []byte("b"), []byte("c")},
+		[][]byte{[]byte("b")},
+	)
+	require.Equal(t, [][]byte{[]byte("a"), []byte("c")}, missing)
+
+	missing[0][0] = 'x'
+	again := missingKeys(
+		[][]byte{[]byte("a")},
+		nil,
+	)
+	require.Equal(t, [][]byte{[]byte("a")}, again)
 }
 
 func TestValidateReconnectBackoff(t *testing.T) {
