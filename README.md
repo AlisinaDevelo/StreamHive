@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/AliSinaDevelo/StreamHive/actions/workflows/ci.yml/badge.svg)](https://github.com/AliSinaDevelo/StreamHive/actions/workflows/ci.yml)
 
-StreamHive is a **Go library and CLI** for experimenting with distributed, content-addressed storage. It ships a production-minded **TCP transport** (context-aware listen/dial, TLS hooks, framing, metrics, limits), a **length-prefixed wire format** (`SHV1`), a typed **blob replication protocol**, memory and file-backed **blob stores**, and operational endpoints (`/livez`, `/readyz`, `/metrics`).
+StreamHive is a **Go library and CLI** for experimenting with distributed, content-addressed storage. It ships a production-minded **TCP transport** (context-aware listen/dial, TLS hooks, framing, metrics, limits), a **length-prefixed wire format** (`SHV1`), a typed **blob replication protocol**, memory and file-backed **blob stores**, and operational endpoints (`/livez`, `/readyz`, `/metrics`, `/metrics/prometheus`).
 
-**Semver:** public API versions are tracked in [CHANGELOG.md](CHANGELOG.md) and [internal/version/version.go](internal/version/version.go) (currently **v0.2.0**, pre-1.0).
+**Semver:** public API versions are tracked in [CHANGELOG.md](CHANGELOG.md) and [internal/version/version.go](internal/version/version.go) (currently **v0.3.0**, pre-1.0).
 
-**Status:** networking, framing, local storage, and static-peer blob replication v0.3 are implemented. `storage.FileStore` provides durable local blobs for library users and CLI receivers via `-store-dir`. Conflict resolution and global discovery are not implemented. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**Status:** networking, framing, local storage, and static-peer blob replication v0.3 are implemented, with unreleased v0.4 anti-entropy sync in progress. `storage.FileStore` provides durable local blobs for library users and CLI receivers via `-store-dir`. Conflict resolution and global discovery are not implemented. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Prerequisites
 
@@ -44,7 +44,7 @@ Inspect counters:
 curl -s http://127.0.0.1:8080/metrics
 ```
 
-Look for `replication_blobs_stored`, `replication_bytes_stored`, and transport frame counters. The receiver stores blobs in memory for this v0.3 path.
+Look for `replication_blobs_stored`, `replication_bytes_stored`, and transport frame counters. Use `/metrics` for JSON or `/metrics/prometheus` for Prometheus text format.
 
 Or run the whole flow:
 

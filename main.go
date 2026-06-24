@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -614,6 +615,14 @@ func startHealth(addr string, tr *p2p.TCPTransport, replMetrics *replicationMetr
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(snapshot)
 	})
+	mux.HandleFunc("/metrics/prometheus", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		snapshot := tr.Metrics().Snapshot()
+		for key, value := range replMetrics.Snapshot() {
+			snapshot[key] = value
+		}
+		writePrometheusMetrics(w, snapshot)
+	})
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -631,4 +640,15 @@ func startHealth(addr string, tr *p2p.TCPTransport, replMetrics *replicationMetr
 		}
 	}()
 	return srv, nil
+}
+
+func writePrometheusMetrics(w io.Writer, snapshot map[string]int64) {
+	keys := make([]string, 0, len(snapshot))
+	for key := range snapshot {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		_, _ = fmt.Fprintf(w, "streamhive_%s %d\n", key, snapshot[key])
+	}
 }

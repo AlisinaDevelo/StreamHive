@@ -106,6 +106,15 @@ func TestRun_healthEndpoints(t *testing.T) {
 	assert.Contains(t, metrics, "active_peers")
 	assert.Contains(t, metrics, "replication_blobs_stored")
 
+	resp4, err := client.Get(base + "/metrics/prometheus")
+	require.NoError(t, err)
+	defer func() { _ = resp4.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp4.StatusCode)
+	body, err := io.ReadAll(resp4.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "streamhive_active_peers")
+	assert.Contains(t, string(body), "streamhive_replication_blobs_stored")
+
 	cancel()
 	<-errCh
 }
@@ -347,6 +356,15 @@ func TestMissingKeys(t *testing.T) {
 		nil,
 	)
 	require.Equal(t, [][]byte{[]byte("a")}, again)
+}
+
+func TestWritePrometheusMetrics(t *testing.T) {
+	var out bytes.Buffer
+	writePrometheusMetrics(&out, map[string]int64{
+		"z_metric": 2,
+		"a_metric": 1,
+	})
+	assert.Equal(t, "streamhive_a_metric 1\nstreamhive_z_metric 2\n", out.String())
 }
 
 func TestValidateReconnectBackoff(t *testing.T) {
