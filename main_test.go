@@ -5,13 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/AliSinaDevelo/StreamHive/p2p"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -112,6 +116,25 @@ func TestRun_putRequiresDial(t *testing.T) {
 	assert.Contains(t, err.Error(), "-put-key requires -dial or -peers")
 }
 
+func TestRun_peerReconnectRequiresPeers(t *testing.T) {
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"-peer-reconnect"}, &out, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "-peer-reconnect requires -peers")
+}
+
+func TestRun_peerReconnectRejectsOneShotPut(t *testing.T) {
+	var out bytes.Buffer
+	err := run(context.Background(), []string{
+		"-peers", "127.0.0.1:1",
+		"-peer-reconnect",
+		"-put-key", "alpha",
+		"-put-data", "hello",
+	}, &out, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be combined with -put-key")
+}
+
 func TestRun_replicatesBlobPutToDialPeer(t *testing.T) {
 	serverCtx, serverCancel := context.WithCancel(context.Background())
 	defer serverCancel()
@@ -197,4 +220,49 @@ func TestParsePeerTargets(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestValidateReconnectBackoff(t *testing.T) {
+	assert.NoError(t, validateReconnectBackoff(10*time.Millisecond, 20*time.Millisecond))
+	assert.Error(t, validateReconnectBackoff(0, 20*time.Millisecond))
+	assert.Error(t, validateReconnectBackoff(20*time.Millisecond, 10*time.Millisecond))
+}
+
+func TestPeerReconnector_dialsWhenPeerAppears(t *testing.T) {
+	reserved, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := reserved.Addr().String()
+	require.NoError(t, reserved.Close())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	client := p2p.NewTCPTransport("127.0.0.1:0")
+	client.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	client.DialTimeout = 20 * time.Millisecond
+	require.NoError(t, client.ListenAndAccept(ctx))
+	defer func() { _ = client.Close() }()
+
+	reconnector := newPeerReconnector(
+		ctx,
+		client,
+		[]string{addr},
+		10*time.Millisecond,
+		20*time.Millisecond,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	reconnector.Start()
+
+	var seen atomic.Int32
+	server := p2p.NewTCPTransport(addr)
+	server.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	server.OnPeer = func(p2p.Peer) {
+		seen.Add(1)
+	}
+	require.NoError(t, server.ListenAndAccept(ctx))
+	defer func() { _ = server.Close() }()
+
+	require.Eventually(t, func() bool {
+		return seen.Load() == 1
+	}, 3*time.Second, 20*time.Millisecond)
 }

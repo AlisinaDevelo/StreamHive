@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -42,6 +43,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	listen := fs.String("listen", "127.0.0.1:0", "TCP listen address")
 	dial := fs.String("dial", "", "optional peer host:port to dial after listen")
 	peers := fs.String("peers", "", "comma-separated peer host:port list to dial after listen")
+	peerReconnect := fs.Bool("peer-reconnect", false, "keep retrying -peers with exponential backoff")
+	peerReconnectMin := fs.Duration("peer-reconnect-min", 500*time.Millisecond, "minimum reconnect backoff for -peer-reconnect")
+	peerReconnectMax := fs.Duration("peer-reconnect-max", 30*time.Second, "maximum reconnect backoff for -peer-reconnect")
 	health := fs.String("health", "", "optional HTTP listen addr for /livez /readyz /metrics (e.g. :8080)")
 	maxPeers := fs.Int("max-peers", 0, "max simultaneous peers (0 = unlimited)")
 	dialTimeout := fs.Duration("dial-timeout", 0, "default dial timeout (0 = use context only)")
@@ -69,12 +73,25 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		_, err := fmt.Fprintln(stdout, version.Version)
 		return err
 	}
-	peerTargets, err := parsePeerTargets(*dial, *peers)
+	dialTarget := strings.TrimSpace(*dial)
+	peerList, err := parsePeerList(*peers)
 	if err != nil {
 		return err
 	}
+	peerTargets := combinePeerTargets(dialTarget, peerList)
 	if *putKey != "" && len(peerTargets) == 0 {
 		return fmt.Errorf("replication: -put-key requires -dial or -peers")
+	}
+	if *peerReconnect {
+		if len(peerList) == 0 {
+			return fmt.Errorf("peers: -peer-reconnect requires -peers")
+		}
+		if *putKey != "" {
+			return fmt.Errorf("replication: -peer-reconnect cannot be combined with -put-key")
+		}
+		if err := validateReconnectBackoff(*peerReconnectMin, *peerReconnectMax); err != nil {
+			return err
+		}
 	}
 
 	replLimits := replication.Limits{MaxDataBytes: *maxBlobBytes}
@@ -140,6 +157,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return nil
 		}
 	}
+	var reconnector *peerReconnector
+	if *peerReconnect {
+		reconnector = newPeerReconnector(ctx, tr, peerList, *peerReconnectMin, *peerReconnectMax, log)
+		tr.OnPeerDisconnected = reconnector.OnPeerDisconnected
+	}
 
 	if *tlsCert != "" || *tlsKey != "" {
 		if *tlsCert == "" || *tlsKey == "" {
@@ -155,7 +177,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		}
 	}
 
-	if *dial != "" && (*tlsCA != "" || *insecureSkip || *tlsServerName != "") {
+	if len(peerTargets) > 0 && (*tlsCA != "" || *insecureSkip || *tlsServerName != "") {
 		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
 		if *insecureSkip {
 			cfg.InsecureSkipVerify = true
@@ -192,9 +214,18 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	for _, target := range peerTargets {
-		if err := tr.Dial(ctx, target); err != nil {
-			return fmt.Errorf("dial %s: %w", target, err)
+	if dialTarget != "" {
+		if err := tr.Dial(ctx, dialTarget); err != nil {
+			return fmt.Errorf("dial %s: %w", dialTarget, err)
+		}
+	}
+	if reconnector != nil {
+		reconnector.Start()
+	} else {
+		for _, target := range peerList {
+			if err := tr.Dial(ctx, target); err != nil {
+				return fmt.Errorf("dial %s: %w", target, err)
+			}
 		}
 	}
 	if *exitAfterPut && putResult != nil {
@@ -247,14 +278,126 @@ func reportPutResult(ch chan<- error, err error) {
 	}
 }
 
+type peerReconnector struct {
+	ctx    context.Context
+	tr     *p2p.TCPTransport
+	min    time.Duration
+	max    time.Duration
+	log    *slog.Logger
+	target map[string]struct{}
+
+	mu      sync.Mutex
+	dialing map[string]bool
+}
+
+func newPeerReconnector(ctx context.Context, tr *p2p.TCPTransport, targets []string, minBackoff, maxBackoff time.Duration, log *slog.Logger) *peerReconnector {
+	targetMap := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		targetMap[target] = struct{}{}
+	}
+	return &peerReconnector{
+		ctx:     ctx,
+		tr:      tr,
+		min:     minBackoff,
+		max:     maxBackoff,
+		log:     log,
+		target:  targetMap,
+		dialing: make(map[string]bool, len(targets)),
+	}
+}
+
+func (r *peerReconnector) Start() {
+	for target := range r.target {
+		r.schedule(target, 0)
+	}
+}
+
+func (r *peerReconnector) OnPeerDisconnected(peer p2p.Peer) {
+	if !peer.IsOutbound() {
+		return
+	}
+	target := peer.RemoteAddr().String()
+	if _, ok := r.target[target]; !ok {
+		return
+	}
+	r.schedule(target, r.min)
+}
+
+func (r *peerReconnector) schedule(target string, initialDelay time.Duration) {
+	r.mu.Lock()
+	if r.dialing[target] {
+		r.mu.Unlock()
+		return
+	}
+	r.dialing[target] = true
+	r.mu.Unlock()
+
+	go r.loop(target, initialDelay)
+}
+
+func (r *peerReconnector) loop(target string, initialDelay time.Duration) {
+	defer func() {
+		r.mu.Lock()
+		delete(r.dialing, target)
+		r.mu.Unlock()
+	}()
+
+	delay := r.min
+	if initialDelay > 0 {
+		if !sleepContext(r.ctx, initialDelay) {
+			return
+		}
+	}
+
+	for {
+		if err := r.ctx.Err(); err != nil {
+			return
+		}
+		err := r.tr.Dial(r.ctx, target)
+		if err == nil {
+			r.log.Info("peer reconnect established", "target", target)
+			return
+		}
+		r.log.Warn("peer reconnect failed", "target", target, "err", err, "next", delay)
+		if !sleepContext(r.ctx, delay) {
+			return
+		}
+		delay = nextBackoff(delay, r.max)
+	}
+}
+
+func sleepContext(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func nextBackoff(current, maxDelay time.Duration) time.Duration {
+	next := current * 2
+	if next <= 0 || next > maxDelay {
+		return maxDelay
+	}
+	return next
+}
+
 func parsePeerTargets(dial, peers string) ([]string, error) {
-	targets := make([]string, 0, 1)
-	if strings.TrimSpace(dial) != "" {
-		targets = append(targets, strings.TrimSpace(dial))
+	peerList, err := parsePeerList(peers)
+	if err != nil {
+		return nil, err
 	}
+	return combinePeerTargets(strings.TrimSpace(dial), peerList), nil
+}
+
+func parsePeerList(peers string) ([]string, error) {
 	if strings.TrimSpace(peers) == "" {
-		return targets, nil
+		return nil, nil
 	}
+	targets := make([]string, 0, 1)
 	for _, part := range strings.Split(peers, ",") {
 		target := strings.TrimSpace(part)
 		if target == "" {
@@ -263,6 +406,25 @@ func parsePeerTargets(dial, peers string) ([]string, error) {
 		targets = append(targets, target)
 	}
 	return targets, nil
+}
+
+func combinePeerTargets(dial string, peers []string) []string {
+	targets := make([]string, 0, len(peers)+1)
+	if dial != "" {
+		targets = append(targets, dial)
+	}
+	targets = append(targets, peers...)
+	return targets
+}
+
+func validateReconnectBackoff(minBackoff, maxBackoff time.Duration) error {
+	if minBackoff <= 0 {
+		return fmt.Errorf("peers: -peer-reconnect-min must be greater than zero")
+	}
+	if maxBackoff < minBackoff {
+		return fmt.Errorf("peers: -peer-reconnect-max must be greater than or equal to -peer-reconnect-min")
+	}
+	return nil
 }
 
 type replicationMetrics struct {
