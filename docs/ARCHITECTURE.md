@@ -4,7 +4,7 @@
 
 1. **Transport (`p2p`)** — `TCPTransport` with `context.Context` on `ListenAndAccept` / `Dial`, accept-loop shutdown coordinated with `Close`, optional TLS, optional framed reads via `FrameHandler`, metrics, and peer disconnect hooks.
 2. **Framing (`p2p`)** — `SHV1` length-prefixed payloads (`ReadFrame` / `WriteFrame`) with a configurable maximum size (DoS bound). Application-level handshake string: `HandshakeVersionV1`.
-3. **Replication (`replication`)** — typed JSON messages carried inside frames. The first supported message is `blob.put`, which writes one key/value blob to a receiving `BlobStore`.
+3. **Replication (`replication`)** — typed JSON messages carried inside frames. `blob.put` writes one key/value blob to a receiving `BlobStore`; `blob.has`, `blob.get`, and `blob.missing` provide the inventory/request vocabulary for anti-entropy sync.
 4. **Storage (`storage`)** — `BlobStore` interface with `MemoryStore` for tests/demos and `FileStore` for durable local blobs; SHA-256 helpers provide stable content-addressed keys.
 
 ## Package map
@@ -54,6 +54,7 @@ Implemented:
 - Static peer replication over `-dial` and comma-separated `-peers`.
 - Optional reconnect/backoff for `-peers`.
 - One message type: `blob.put`.
+- Sync message vocabulary: `blob.has`, `blob.get`, and `blob.missing`.
 - Receiver-side storage via `storage.MemoryStore` or durable `storage.FileStore` with `-store-dir`.
 - JSON `/metrics` counters for stored/sent blobs, bytes, and replication errors.
 

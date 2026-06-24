@@ -34,6 +34,38 @@ func TestApplyBlobPut(t *testing.T) {
 	assert.Equal(t, []byte("value"), got)
 }
 
+func TestEncodeDecodeBlobGet(t *testing.T) {
+	payload, err := EncodeBlobGet([]byte("alpha"), Limits{})
+	require.NoError(t, err)
+
+	msg, err := Decode(payload, Limits{})
+	require.NoError(t, err)
+	assert.Equal(t, MessageTypeBlobGet, msg.Type)
+	assert.Equal(t, []byte("alpha"), msg.Key)
+}
+
+func TestEncodeDecodeBlobHas(t *testing.T) {
+	keys := [][]byte{[]byte("alpha"), []byte("beta")}
+	payload, err := EncodeBlobHas(keys, Limits{})
+	require.NoError(t, err)
+
+	msg, err := Decode(payload, Limits{})
+	require.NoError(t, err)
+	assert.Equal(t, MessageTypeBlobHas, msg.Type)
+	assert.Equal(t, [][]byte{[]byte("alpha"), []byte("beta")}, msg.Keys)
+}
+
+func TestEncodeDecodeBlobMissing(t *testing.T) {
+	keys := [][]byte{[]byte("alpha"), []byte("beta")}
+	payload, err := EncodeBlobMissing(keys, Limits{})
+	require.NoError(t, err)
+
+	msg, err := Decode(payload, Limits{})
+	require.NoError(t, err)
+	assert.Equal(t, MessageTypeBlobMissing, msg.Type)
+	assert.Equal(t, [][]byte{[]byte("alpha"), []byte("beta")}, msg.Keys)
+}
+
 func TestApplyRejectsNilStore(t *testing.T) {
 	payload, err := EncodeBlobPut([]byte("k1"), []byte("value"), Limits{})
 	require.NoError(t, err)
@@ -52,12 +84,63 @@ func TestApplyRespectsContextCancellation(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
+func TestApplyRejectsInventoryMessages(t *testing.T) {
+	payload, err := EncodeBlobGet([]byte("k1"), Limits{})
+	require.NoError(t, err)
+
+	err = Apply(context.Background(), storage.NewMemoryStore(), payload, Limits{})
+	assert.ErrorIs(t, err, ErrMessageNotApplicable)
+}
+
 func TestDecodeRejectsUnknownMessageType(t *testing.T) {
 	payload, err := json.Marshal(Message{Type: "peer.hello"})
 	require.NoError(t, err)
 
 	_, err = Decode(payload, Limits{})
 	assert.ErrorIs(t, err, ErrUnknownMessageType)
+}
+
+func TestKeyListValidation(t *testing.T) {
+	tests := []struct {
+		name   string
+		keys   [][]byte
+		limits Limits
+		want   error
+	}{
+		{
+			name: "empty keys",
+			keys: nil,
+			want: ErrKeysEmpty,
+		},
+		{
+			name: "too many keys",
+			keys: [][]byte{[]byte("a"), []byte("b")},
+			limits: Limits{
+				MaxKeys: 1,
+			},
+			want: ErrTooManyKeys,
+		},
+		{
+			name: "empty key",
+			keys: [][]byte{[]byte("a"), nil},
+			want: ErrKeyEmpty,
+		},
+		{
+			name: "key too large",
+			keys: [][]byte{[]byte("abcd")},
+			limits: Limits{
+				MaxKeyBytes: 3,
+			},
+			want: ErrKeyTooLarge,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := EncodeBlobHas(tt.keys, tt.limits)
+			assert.ErrorIs(t, err, tt.want)
+		})
+	}
 }
 
 func TestBlobPutValidation(t *testing.T) {
@@ -109,6 +192,19 @@ func TestDecodeReturnsCopiedSlices(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []byte("alpha"), again.Key)
 	assert.Equal(t, []byte("hello"), again.Data)
+}
+
+func TestDecodeReturnsCopiedKeyLists(t *testing.T) {
+	payload, err := EncodeBlobHas([][]byte{[]byte("alpha")}, Limits{})
+	require.NoError(t, err)
+
+	msg, err := Decode(payload, Limits{})
+	require.NoError(t, err)
+	msg.Keys[0][0] = 'x'
+
+	again, err := Decode(payload, Limits{})
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{[]byte("alpha")}, again.Keys)
 }
 
 func TestDecodeInvalidJSON(t *testing.T) {
