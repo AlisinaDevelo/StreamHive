@@ -2,6 +2,12 @@
 
 All notable changes to StreamHive are documented here. This project follows [Semantic Versioning](https://semver.org/) for the **public Go API** (`p2p`, `storage`, and stable CLI flags). Until v1.0.0, minor releases may include API adjustments; see entries below.
 
+## [Unreleased]
+
+### Added
+
+- **`storage`**: SHA-256 content key helpers for content-addressed blob IDs.
+
 ## [0.3.0] — 2026-06-24
 
 ### Added
