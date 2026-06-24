@@ -24,7 +24,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on pushes and pull requests to 
 - `go vet ./...`
 - `go test -race -count=1 ./...` on Go 1.22.x and 1.23.x
 - `golangci-lint` with `.golangci.yml`
-- `govulncheck ./...`
+- `govulncheck ./...` on a current patched Go toolchain (separate from the compatibility matrix)
 - Coverage profile upload as a workflow artifact (`coverage-<go-version>.out`)
 - **SBOM** job: CycloneDX JSON via `cyclonedx-gomod`, uploaded as `sbom-cyclonedx`
 
