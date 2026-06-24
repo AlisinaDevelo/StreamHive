@@ -52,6 +52,14 @@ Or run the whole flow:
 make demo-replication
 ```
 
+For a longer-lived node with static peers, use `-peers` and reconnect backoff:
+
+```bash
+go run . -listen 127.0.0.1:7071 -peers 127.0.0.1:7070,127.0.0.1:7072 -peer-reconnect
+```
+
+`-peer-reconnect` retries only `-peers` targets. `-dial` stays a one-shot connection attempt for scripts and tests.
+
 ### Library packages
 
 | Import | Purpose |
@@ -69,6 +77,8 @@ Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside applicati
 | `-listen` | TCP listen address |
 | `-dial` | Optional peer to dial after listen |
 | `-peers` | Optional comma-separated peers to dial after listen |
+| `-peer-reconnect` | Retry `-peers` with exponential backoff |
+| `-peer-reconnect-min` / `-peer-reconnect-max` | Reconnect backoff bounds |
 | `-health` | HTTP `host:port` for `/livez`, `/readyz`, `/metrics` |
 | `-max-peers` | Cap simultaneous peers (0 = unlimited) |
 | `-dial-timeout` | Outbound dial timeout |
