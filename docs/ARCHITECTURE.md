@@ -1,5 +1,20 @@
 # Architecture
 
+StreamHive is built in four layers — transport, framing, replication, and storage — each
+a thin seam over the one below it. The diagram below is the fastest orientation; the
+sections after it go deep.
+
+```mermaid
+flowchart TD
+  cli["CLI / library user"] --> tr["Transport (p2p)<br/>TCPTransport · TLS · context"]
+  tr --> fr["Framing (p2p)<br/>SHV1 length-prefixed frames"]
+  fr --> rep["Replication (replication)<br/>blob.put / has / get / missing"]
+  rep --> st["Storage (storage)<br/>BlobStore"]
+  st --> mem["MemoryStore"]
+  st --> file["FileStore (durable)"]
+  tr -. exposes .-> health["HTTP /livez /readyz /metrics"]
+```
+
 ## Layers
 
 1. **Transport (`p2p`)** — `TCPTransport` with `context.Context` on `ListenAndAccept` / `Dial`, accept-loop shutdown coordinated with `Close`, optional TLS, optional framed reads via `FrameHandler`, metrics, and peer disconnect hooks.
@@ -17,6 +32,50 @@
 | `internal/version` | Semver string for releases |
 | `.` | CLI: `run`, health HTTP server, replication demo flags |
 
+### Core interfaces
+
+The seams are interfaces, so storage and peers are swappable without touching the layers
+above. `TCPPeer` adds `WriteFrame` on top of the `Peer` contract.
+
+```mermaid
+classDiagram
+  class Transport {
+    <<interface>>
+    +ListenAndAccept(ctx) error
+    +Dial(ctx, address) error
+    +Addr() net.Addr
+    +Close() error
+  }
+  class Peer {
+    <<interface>>
+    +RemoteAddr() net.Addr
+    +IsOutbound() bool
+    +Close() error
+  }
+  class BlobStore {
+    <<interface>>
+    +Put(ctx, key, data) error
+    +Get(ctx, key) bytes
+    +Has(ctx, key) bool
+    +Delete(ctx, key) error
+  }
+  class BlobKeyLister {
+    <<interface>>
+    +Keys(ctx) keys
+  }
+  class TCPPeer {
+    +WriteFrame(payload, max) error
+  }
+  Transport <|.. TCPTransport
+  Peer <|.. TCPPeer
+  BlobStore <|.. MemoryStore
+  BlobStore <|.. FileStore
+  BlobKeyLister <|.. MemoryStore
+  BlobKeyLister <|.. FileStore
+  TCPTransport o-- TCPPeer : tracks
+  TCPTransport ..> BlobStore : FrameHandler writes
+```
+
 ## Concurrency and lifecycle
 
 - Listener and peer map share a mutex; the accept loop exits when the listener is closed.
@@ -25,6 +84,26 @@
 - CLI replication installs a `FrameHandler` that decodes `blob.put` messages and writes to `MemoryStore` by default, or `FileStore` when `-store-dir` is set. Outbound `-put-key` / `-put-data` sends one frame after `-dial` or `-peers` connects.
 - `-peer-reconnect` manages only static `-peers` targets. It retries failed dials with exponential backoff and schedules another retry when an outbound configured peer disconnects.
 - Replication peers advertise local keys on connect. Receivers reply with `blob.missing`, and owners send the requested blobs with `blob.put`.
+
+### Peer lifecycle
+
+```mermaid
+stateDiagram-v2
+  [*] --> Dialing: outbound (-dial / -peers)
+  [*] --> Accepting: inbound
+  Dialing --> Connected: TCP + optional TLS handshake
+  Dialing --> Backoff: dial failed (-peer-reconnect)
+  Backoff --> Dialing: backoff elapsed
+  Accepting --> Connected: under max-peers
+  Accepting --> Rejected: max-peers reached
+  Connected --> Framed: FrameHandler installed
+  Framed --> Framed: read + apply frame
+  Connected --> Disconnected: EOF / error / Close
+  Framed --> Disconnected: EOF / error
+  Disconnected --> Backoff: was a configured -peers target
+  Disconnected --> [*]
+  Rejected --> [*]
+```
 
 ## Failure modes (transport)
 
