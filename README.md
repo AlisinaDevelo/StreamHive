@@ -44,7 +44,7 @@ Inspect counters:
 curl -s http://127.0.0.1:8080/metrics
 ```
 
-Look for `replication_blobs_stored`, `replication_bytes_stored`, and transport frame counters. The sender derives the blob key from `SHA-256(put-data)` when `-put-content-key` is set. Use `/metrics` for JSON or `/metrics/prometheus` for Prometheus text format.
+Look for `replication_blobs_stored`, `replication_bytes_stored`, duplicate counters, and transport frame counters. The sender derives the blob key from `SHA-256(put-data)` when `-put-content-key` is set; receivers verify SHA-256-shaped keys before storing. Use `/metrics` for JSON or `/metrics/prometheus` for Prometheus text format.
 
 Or run the whole flow:
 

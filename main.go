@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -335,6 +336,19 @@ func handleReplicationMessage(
 ) error {
 	switch msg.Type {
 	case replication.MessageTypeBlobPut:
+		if err := verifyContentKeyIfSHA256(msg.Key, msg.Data); err != nil {
+			return err
+		}
+		existing, err := store.Get(ctx, msg.Key)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return err
+		}
+		if err == nil && bytes.Equal(existing, msg.Data) {
+			metrics.DuplicateBlobs.Add(1)
+			metrics.DuplicateBytes.Add(uint64(len(msg.Data)))
+			log.Info("replicated blob duplicate", "remote", peer.RemoteAddr().String(), "key", formatBlobKey(msg.Key), "bytes", len(msg.Data))
+			return nil
+		}
 		if err := store.Put(ctx, msg.Key, msg.Data); err != nil {
 			return err
 		}
@@ -438,6 +452,13 @@ func formatBlobKey(key []byte) string {
 		return hex.EncodeToString(key)
 	}
 	return string(key)
+}
+
+func verifyContentKeyIfSHA256(key, data []byte) error {
+	if err := storage.ValidateSHA256Key(key); err != nil {
+		return nil
+	}
+	return storage.VerifySHA256Key(key, data)
 }
 
 func writePeerFrame(peer p2p.Peer, payload []byte, maxFrameBytes int) error {
@@ -613,12 +634,14 @@ func validateReconnectBackoff(minBackoff, maxBackoff time.Duration) error {
 }
 
 type replicationMetrics struct {
-	BlobsStored atomic.Uint64
-	BytesStored atomic.Uint64
-	ApplyErrors atomic.Uint64
-	BlobsSent   atomic.Uint64
-	BytesSent   atomic.Uint64
-	SendErrors  atomic.Uint64
+	BlobsStored    atomic.Uint64
+	BytesStored    atomic.Uint64
+	DuplicateBlobs atomic.Uint64
+	DuplicateBytes atomic.Uint64
+	ApplyErrors    atomic.Uint64
+	BlobsSent      atomic.Uint64
+	BytesSent      atomic.Uint64
+	SendErrors     atomic.Uint64
 }
 
 func (m *replicationMetrics) Snapshot() map[string]int64 {
@@ -626,12 +649,14 @@ func (m *replicationMetrics) Snapshot() map[string]int64 {
 		return map[string]int64{}
 	}
 	return map[string]int64{
-		"replication_blobs_stored": int64(m.BlobsStored.Load()),
-		"replication_bytes_stored": int64(m.BytesStored.Load()),
-		"replication_apply_errors": int64(m.ApplyErrors.Load()),
-		"replication_blobs_sent":   int64(m.BlobsSent.Load()),
-		"replication_bytes_sent":   int64(m.BytesSent.Load()),
-		"replication_send_errors":  int64(m.SendErrors.Load()),
+		"replication_blobs_stored":    int64(m.BlobsStored.Load()),
+		"replication_bytes_stored":    int64(m.BytesStored.Load()),
+		"replication_duplicate_blobs": int64(m.DuplicateBlobs.Load()),
+		"replication_duplicate_bytes": int64(m.DuplicateBytes.Load()),
+		"replication_apply_errors":    int64(m.ApplyErrors.Load()),
+		"replication_blobs_sent":      int64(m.BlobsSent.Load()),
+		"replication_bytes_sent":      int64(m.BytesSent.Load()),
+		"replication_send_errors":     int64(m.SendErrors.Load()),
 	}
 }
 

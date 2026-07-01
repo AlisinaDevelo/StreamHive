@@ -4,6 +4,15 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 
 ## [Unreleased]
 
+### Added
+
+- **Metrics**: duplicate blob counters for idempotent replication receives.
+
+### Changed
+
+- **CLI**: `blob.put` handling now skips exact duplicate key/data writes while still allowing opaque-key replacement.
+- **CLI**: SHA-256-shaped blob keys are verified against received data before storage.
+
 ## [0.4.0] — 2026-07-01
 
 ### Added

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/AliSinaDevelo/StreamHive/p2p"
+	"github.com/AliSinaDevelo/StreamHive/replication"
 	"github.com/AliSinaDevelo/StreamHive/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,6 +27,12 @@ type safeBuffer struct {
 	mu sync.Mutex
 	b  bytes.Buffer
 }
+
+type testPeer struct{}
+
+func (testPeer) RemoteAddr() net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 7070} }
+func (testPeer) Close() error         { return nil }
+func (testPeer) IsOutbound() bool     { return false }
 
 func (s *safeBuffer) Write(p []byte) (int, error) {
 	s.mu.Lock()
@@ -439,6 +446,61 @@ func TestMissingKeys(t *testing.T) {
 	require.Equal(t, [][]byte{[]byte("a")}, again)
 }
 
+func TestHandleReplicationMessageSkipsExactDuplicateBlobPut(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemoryStore()
+	metrics := &replicationMetrics{}
+	data := []byte("same")
+	key := storage.SHA256Key(data)
+	msg := replication.Message{
+		Type: replication.MessageTypeBlobPut,
+		Key:  key,
+		Data: data,
+	}
+
+	require.NoError(t, handleReplicationMessage(ctx, testPeer{}, store, nil, msg, replication.Limits{}, 0, metrics, slog.New(slog.NewTextHandler(io.Discard, nil)), store))
+	require.NoError(t, handleReplicationMessage(ctx, testPeer{}, store, nil, msg, replication.Limits{}, 0, metrics, slog.New(slog.NewTextHandler(io.Discard, nil)), store))
+
+	assert.Equal(t, uint64(1), metrics.BlobsStored.Load())
+	assert.Equal(t, uint64(1), metrics.DuplicateBlobs.Load())
+	assert.Equal(t, uint64(len(data)), metrics.DuplicateBytes.Load())
+	got, err := store.Get(ctx, key)
+	require.NoError(t, err)
+	assert.Equal(t, data, got)
+}
+
+func TestHandleReplicationMessageRejectsSHA256Mismatch(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemoryStore()
+	metrics := &replicationMetrics{}
+	msg := replication.Message{
+		Type: replication.MessageTypeBlobPut,
+		Key:  storage.SHA256Key([]byte("expected")),
+		Data: []byte("tampered"),
+	}
+
+	err := handleReplicationMessage(ctx, testPeer{}, store, nil, msg, replication.Limits{}, 0, metrics, slog.New(slog.NewTextHandler(io.Discard, nil)), store)
+	assert.ErrorIs(t, err, storage.ErrSHA256Mismatch)
+	assert.Equal(t, uint64(0), metrics.BlobsStored.Load())
+}
+
+func TestHandleReplicationMessageAllowsOpaqueKeyReplace(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemoryStore()
+	metrics := &replicationMetrics{}
+
+	first := replication.Message{Type: replication.MessageTypeBlobPut, Key: []byte("manual"), Data: []byte("first")}
+	second := replication.Message{Type: replication.MessageTypeBlobPut, Key: []byte("manual"), Data: []byte("second")}
+	require.NoError(t, handleReplicationMessage(ctx, testPeer{}, store, nil, first, replication.Limits{}, 0, metrics, slog.New(slog.NewTextHandler(io.Discard, nil)), store))
+	require.NoError(t, handleReplicationMessage(ctx, testPeer{}, store, nil, second, replication.Limits{}, 0, metrics, slog.New(slog.NewTextHandler(io.Discard, nil)), store))
+
+	assert.Equal(t, uint64(2), metrics.BlobsStored.Load())
+	assert.Equal(t, uint64(0), metrics.DuplicateBlobs.Load())
+	got, err := store.Get(ctx, []byte("manual"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("second"), got)
+}
+
 func TestResolvePutKey(t *testing.T) {
 	key, label := resolvePutKey("manual", []byte("hello"), false)
 	assert.Equal(t, []byte("manual"), key)
@@ -453,6 +515,13 @@ func TestFormatBlobKey(t *testing.T) {
 	data := []byte("hello")
 	assert.Equal(t, "manual", formatBlobKey([]byte("manual")))
 	assert.Equal(t, storage.SHA256KeyHex(data), formatBlobKey(storage.SHA256Key(data)))
+}
+
+func TestVerifyContentKeyIfSHA256(t *testing.T) {
+	data := []byte("hello")
+	assert.NoError(t, verifyContentKeyIfSHA256([]byte("manual"), data))
+	assert.NoError(t, verifyContentKeyIfSHA256(storage.SHA256Key(data), data))
+	assert.ErrorIs(t, verifyContentKeyIfSHA256(storage.SHA256Key(data), []byte("tampered")), storage.ErrSHA256Mismatch)
 }
 
 func TestWritePrometheusMetrics(t *testing.T) {

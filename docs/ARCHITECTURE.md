@@ -82,6 +82,7 @@ classDiagram
 - `Close` stops new accepts, waits for the accept goroutine, then closes open peer connections. Peer goroutines remove themselves from the map on EOF / error via `unregisterPeer`.
 - Optional `FrameHandler` runs per frame on each peer session until error, context cancellation, or disconnect.
 - CLI replication installs a `FrameHandler` that decodes `blob.put` messages and writes to `MemoryStore` by default, or `FileStore` when `-store-dir` is set. Outbound `-put-key` / `-put-data` sends one manually keyed frame after `-dial` or `-peers` connects; `-put-content-key` derives the key from `SHA-256(-put-data)`. `-list-keys` inspects durable stores by printing known keys as hex.
+- Receivers treat 32-byte keys as SHA-256 content addresses and verify payload integrity before storage. Exact duplicate key/data writes are skipped and counted separately; opaque keys with different data still replace existing values.
 - `-peer-reconnect` manages only static `-peers` targets. It retries failed dials with exponential backoff and schedules another retry when an outbound configured peer disconnects.
 - Replication peers advertise local keys on connect. Receivers reply with `blob.missing`, and owners send the requested blobs with `blob.put`.
 
