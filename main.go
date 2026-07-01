@@ -50,7 +50,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	peerReconnectMin := fs.Duration("peer-reconnect-min", 500*time.Millisecond, "minimum reconnect backoff for -peer-reconnect")
 	peerReconnectMax := fs.Duration("peer-reconnect-max", 30*time.Second, "maximum reconnect backoff for -peer-reconnect")
 	syncInterval := fs.Duration("sync-interval", 0, "periodically advertise local blob keys to connected peers (0 = startup only)")
-	health := fs.String("health", "", "optional HTTP listen addr for /livez /readyz /metrics (e.g. :8080)")
+	health := fs.String("health", "", "optional HTTP listen addr for /livez /readyz /peers /metrics (e.g. :8080)")
 	maxPeers := fs.Int("max-peers", 0, "max simultaneous peers (0 = unlimited)")
 	dialTimeout := fs.Duration("dial-timeout", 0, "default dial timeout (0 = use context only)")
 	readIdle := fs.Duration("read-idle-timeout", 0, "TCP read deadline refresh for peer loops (0 = none for discard mode)")
@@ -695,6 +695,36 @@ func (m *replicationMetrics) Snapshot() map[string]int64 {
 	}
 }
 
+type peerStatus struct {
+	RemoteAddr string `json:"remote_addr"`
+	Outbound   bool   `json:"outbound"`
+}
+
+type peersResponse struct {
+	ActivePeers int          `json:"active_peers"`
+	Peers       []peerStatus `json:"peers"`
+}
+
+func snapshotPeers(peers []p2p.Peer) peersResponse {
+	statuses := make([]peerStatus, 0, len(peers))
+	for _, peer := range peers {
+		statuses = append(statuses, peerStatus{
+			RemoteAddr: peer.RemoteAddr().String(),
+			Outbound:   peer.IsOutbound(),
+		})
+	}
+	sort.Slice(statuses, func(i, j int) bool {
+		if statuses[i].RemoteAddr == statuses[j].RemoteAddr {
+			return !statuses[i].Outbound && statuses[j].Outbound
+		}
+		return statuses[i].RemoteAddr < statuses[j].RemoteAddr
+	})
+	return peersResponse{
+		ActivePeers: len(statuses),
+		Peers:       statuses,
+	}
+}
+
 func startHealth(addr string, tr *p2p.TCPTransport, replMetrics *replicationMetrics, log *slog.Logger) (*http.Server, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/livez", func(w http.ResponseWriter, _ *http.Request) {
@@ -718,6 +748,12 @@ func startHealth(addr string, tr *p2p.TCPTransport, replMetrics *replicationMetr
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(snapshot)
+	})
+	mux.HandleFunc("/peers", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(snapshotPeers(tr.Peers()))
 	})
 	mux.HandleFunc("/metrics/prometheus", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")

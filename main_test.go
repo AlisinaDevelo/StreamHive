@@ -34,6 +34,20 @@ func (testPeer) RemoteAddr() net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0,
 func (testPeer) Close() error         { return nil }
 func (testPeer) IsOutbound() bool     { return false }
 
+type staticPeer struct {
+	addr     string
+	outbound bool
+}
+
+func (p staticPeer) RemoteAddr() net.Addr { return staticAddr(p.addr) }
+func (p staticPeer) Close() error         { return nil }
+func (p staticPeer) IsOutbound() bool     { return p.outbound }
+
+type staticAddr string
+
+func (a staticAddr) Network() string { return "tcp" }
+func (a staticAddr) String() string  { return string(a) }
+
 func (s *safeBuffer) Write(p []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -121,6 +135,15 @@ func TestRun_healthEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "streamhive_active_peers")
 	assert.Contains(t, string(body), "streamhive_replication_blobs_stored")
+
+	resp5, err := client.Get(base + "/peers")
+	require.NoError(t, err)
+	defer func() { _ = resp5.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp5.StatusCode)
+	var peers peersResponse
+	require.NoError(t, json.NewDecoder(resp5.Body).Decode(&peers))
+	assert.Equal(t, 0, peers.ActivePeers)
+	assert.Empty(t, peers.Peers)
 
 	cancel()
 	<-errCh
@@ -604,6 +627,19 @@ func TestWritePrometheusMetrics(t *testing.T) {
 		"a_metric": 1,
 	})
 	assert.Equal(t, "streamhive_a_metric 1\nstreamhive_z_metric 2\n", out.String())
+}
+
+func TestSnapshotPeersSortsByAddress(t *testing.T) {
+	resp := snapshotPeers([]p2p.Peer{
+		staticPeer{addr: "127.0.0.1:9002", outbound: true},
+		staticPeer{addr: "127.0.0.1:9001", outbound: false},
+	})
+
+	require.Equal(t, 2, resp.ActivePeers)
+	require.Equal(t, []peerStatus{
+		{RemoteAddr: "127.0.0.1:9001", Outbound: false},
+		{RemoteAddr: "127.0.0.1:9002", Outbound: true},
+	}, resp.Peers)
 }
 
 func TestValidateReconnectBackoff(t *testing.T) {

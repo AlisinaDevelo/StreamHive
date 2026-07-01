@@ -12,7 +12,7 @@ flowchart TD
   rep --> st["Storage (storage)<br/>BlobStore"]
   st --> mem["MemoryStore"]
   st --> file["FileStore (durable)"]
-  tr -. exposes .-> health["HTTP /livez /readyz /metrics"]
+  tr -. exposes .-> health["HTTP /livez /readyz /peers /metrics"]
 ```
 
 ## Layers
@@ -137,11 +137,12 @@ Implemented:
 - Message types: `blob.put`, `blob.has`, `blob.get`, and `blob.missing`.
 - Startup anti-entropy for connected `-replicate` peers.
 - Receiver-side storage via `storage.MemoryStore` or durable `storage.FileStore` with `-store-dir`.
-- JSON `/metrics` counters for stored/sent blobs, bytes, and replication errors.
+- JSON `/peers` snapshots for connected peer addresses/direction.
+- JSON `/metrics` counters for stored/sent blobs, bytes, duplicates, and replication errors.
 
 Not implemented yet:
 
-- Continuous anti-entropy, retries for partial sync failures, or conflict resolution.
+- Retries for partial sync failures or conflict resolution.
 - Automated peer discovery beyond static dial targets.
 - Authenticated application-level identity beyond optional TLS/mTLS configuration.
 

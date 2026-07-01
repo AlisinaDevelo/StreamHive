@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/AliSinaDevelo/StreamHive/actions/workflows/ci.yml/badge.svg)](https://github.com/AliSinaDevelo/StreamHive/actions/workflows/ci.yml)
 
-StreamHive is a **Go library and CLI** for experimenting with distributed, content-addressed storage. It ships a production-minded **TCP transport** (context-aware listen/dial, TLS hooks, framing, metrics, limits), a **length-prefixed wire format** (`SHV1`), a typed **blob replication protocol**, memory and file-backed **blob stores**, and operational endpoints (`/livez`, `/readyz`, `/metrics`, `/metrics/prometheus`).
+StreamHive is a **Go library and CLI** for experimenting with distributed, content-addressed storage. It ships a production-minded **TCP transport** (context-aware listen/dial, TLS hooks, framing, metrics, limits), a **length-prefixed wire format** (`SHV1`), a typed **blob replication protocol**, memory and file-backed **blob stores**, and operational endpoints (`/livez`, `/readyz`, `/peers`, `/metrics`, `/metrics/prometheus`).
 
 **Semver:** public API versions are tracked in [CHANGELOG.md](CHANGELOG.md) and [internal/version/version.go](internal/version/version.go) (currently **v0.5.0**, pre-1.0).
 
@@ -21,7 +21,7 @@ go test ./...
 go run . -version
 make run
 ./bin/fs -listen :7070 -dial 127.0.0.1:8080
-./bin/fs -listen 127.0.0.1:0 -health 127.0.0.1:8080   # HTTP live/ready/metrics
+./bin/fs -listen 127.0.0.1:0 -health 127.0.0.1:8080   # HTTP live/ready/peers/metrics
 ```
 
 ### Two-node replication demo
@@ -44,7 +44,13 @@ Inspect counters:
 curl -s http://127.0.0.1:8080/metrics
 ```
 
-Look for `replication_blobs_stored`, `replication_bytes_stored`, duplicate counters, and transport frame counters. The sender derives the blob key from `SHA-256(put-data)` when `-put-content-key` is set; receivers verify SHA-256-shaped keys before storing. Use `/metrics` for JSON or `/metrics/prometheus` for Prometheus text format.
+Inspect connected peers:
+
+```bash
+curl -s http://127.0.0.1:8080/peers
+```
+
+Look for `replication_blobs_stored`, `replication_bytes_stored`, duplicate counters, and transport frame counters. The sender derives the blob key from `SHA-256(put-data)` when `-put-content-key` is set; receivers verify SHA-256-shaped keys before storing. Use `/metrics` for JSON counters, `/metrics/prometheus` for Prometheus text format, and `/peers` for a sorted peer snapshot.
 
 Or run the whole flow:
 
@@ -106,7 +112,7 @@ Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside applicati
 | `-peer-reconnect` | Retry `-peers` with exponential backoff |
 | `-peer-reconnect-min` / `-peer-reconnect-max` | Reconnect backoff bounds |
 | `-sync-interval` | Periodically advertise local blob keys to connected peers (0 = startup only) |
-| `-health` | HTTP `host:port` for `/livez`, `/readyz`, `/metrics` |
+| `-health` | HTTP `host:port` for `/livez`, `/readyz`, `/peers`, `/metrics` |
 | `-max-peers` | Cap simultaneous peers (0 = unlimited) |
 | `-dial-timeout` | Outbound dial timeout |
 | `-read-idle-timeout` | Peer read deadline refresh |
