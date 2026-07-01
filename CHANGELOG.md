@@ -8,6 +8,8 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 
 - **Metrics**: duplicate blob counters for idempotent replication receives.
 - **CLI**: `-sync-interval` for periodic anti-entropy inventory after peer startup.
+- **Demo**: 3-node corruption repair demo for deleted durable blobs.
+- **CI**: Docker Compose corruption repair demo verification.
 
 ### Changed
 

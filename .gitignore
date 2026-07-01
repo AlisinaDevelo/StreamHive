@@ -5,6 +5,7 @@ bin/
 coverage.out
 coverage.html
 .streamhive-compose/
+.streamhive-repair/
 .DS_Store
 .idea/
 .vscode/

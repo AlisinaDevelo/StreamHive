@@ -58,6 +58,12 @@ For a 3-node Docker Compose demo with durable stores and node restart rehydratio
 make demo-compose
 ```
 
+For a 3-node corruption repair demo that deletes node3's durable blob and waits for periodic anti-entropy to restore it:
+
+```bash
+make demo-repair
+```
+
 For a longer-lived node with static peers, use `-peers` and reconnect backoff:
 
 ```bash
@@ -114,7 +120,7 @@ Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside applicati
 | `-exit-after-put` | Exit after the outbound blob frame is written |
 | `-max-blob-bytes` | Cap replicated blob payload size |
 
-See the [Makefile](Makefile) for `test-race`, `vet`, `cover`, and `lint`.
+See the [Makefile](Makefile) for `test-race`, `vet`, `cover`, `lint`, and demos.
 
 ## Architecture (summary)
 

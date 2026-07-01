@@ -17,6 +17,8 @@ services:
       - 200ms
       - -peer-reconnect-max
       - 2s
+      - -sync-interval
+      - 1s
     ports:
       - "18081:8080"
     volumes:
@@ -39,6 +41,8 @@ services:
       - 200ms
       - -peer-reconnect-max
       - 2s
+      - -sync-interval
+      - 1s
     ports:
       - "18082:8080"
     volumes:
@@ -61,6 +65,8 @@ services:
       - 200ms
       - -peer-reconnect-max
       - 2s
+      - -sync-interval
+      - 1s
     ports:
       - "18083:8080"
     volumes:

@@ -27,6 +27,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on pushes and pull requests to 
 - `govulncheck ./...` on a current patched Go toolchain (separate from the compatibility matrix)
 - `make demo-replication` with fixed localhost ports
 - `make demo-compose` to verify 3-node durable rehydration
+- `make demo-repair` to verify periodic repair after local durable corruption
 - Coverage profile upload as a workflow artifact (`coverage-<go-version>.out`)
 - **SBOM** job: CycloneDX JSON via `cyclonedx-gomod`, uploaded as `sbom-cyclonedx`
 

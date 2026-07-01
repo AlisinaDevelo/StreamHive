@@ -26,6 +26,14 @@ make demo-compose
 
 The demo builds `streamhive:local`, starts node1, seeds one blob, starts node2 and node3, verifies node3 receives the blob, wipes node3's local demo data, restarts node3, and verifies startup anti-entropy rehydrates the blob again.
 
+Run the corruption repair demo:
+
+```bash
+make demo-repair
+```
+
+The repair demo starts the same 3-node cluster, seeds one content-addressed blob, deletes node3's durable blob file, and verifies periodic anti-entropy restores the exact key.
+
 Health endpoints are exposed on:
 
 - **node1**: <http://127.0.0.1:18081>
