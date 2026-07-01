@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -18,6 +19,8 @@ var (
 	ErrInvalidSHA256Key = errors.New("storage: invalid sha256 key")
 	// ErrInvalidSHA256HexKey is returned when a key is not a hex-encoded SHA-256 digest.
 	ErrInvalidSHA256HexKey = errors.New("storage: invalid sha256 hex key")
+	// ErrSHA256Mismatch is returned when data does not match its SHA-256 key.
+	ErrSHA256Mismatch = errors.New("storage: sha256 key mismatch")
 )
 
 // SHA256Key returns the content-addressed key for data.
@@ -51,6 +54,17 @@ func ParseSHA256KeyHex(s string) ([]byte, error) {
 func ValidateSHA256Key(key []byte) error {
 	if len(key) != SHA256KeyBytes {
 		return ErrInvalidSHA256Key
+	}
+	return nil
+}
+
+// VerifySHA256Key verifies that key is the SHA-256 digest of data.
+func VerifySHA256Key(key, data []byte) error {
+	if err := ValidateSHA256Key(key); err != nil {
+		return err
+	}
+	if !bytes.Equal(key, SHA256Key(data)) {
+		return ErrSHA256Mismatch
 	}
 	return nil
 }

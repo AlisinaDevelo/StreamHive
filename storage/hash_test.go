@@ -50,3 +50,12 @@ func TestValidateSHA256Key(t *testing.T) {
 	err := ValidateSHA256Key([]byte("short"))
 	assert.True(t, errors.Is(err, ErrInvalidSHA256Key))
 }
+
+func TestVerifySHA256Key(t *testing.T) {
+	data := []byte("hello")
+	key := SHA256Key(data)
+
+	assert.NoError(t, VerifySHA256Key(key, data))
+	assert.ErrorIs(t, VerifySHA256Key(key, []byte("tampered")), ErrSHA256Mismatch)
+	assert.ErrorIs(t, VerifySHA256Key([]byte("short"), data), ErrInvalidSHA256Key)
+}
