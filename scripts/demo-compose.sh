@@ -31,7 +31,7 @@ wait_stored() {
 	name="$1"
 	url="$2"
 	i=0
-	until curl -fsS "$url/metrics" | grep '"replication_blobs_stored": 1' >/dev/null; do
+	until curl -fsS "$url/metrics" | grep '"replication_blobs_stored": [1-9]' >/dev/null; do
 		i=$((i + 1))
 		if [ "$i" -gt 80 ]; then
 			echo "$name did not store replicated blob" >&2
