@@ -4,6 +4,8 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-01
+
 ### Added
 
 - **Metrics**: duplicate blob counters for idempotent replication receives.

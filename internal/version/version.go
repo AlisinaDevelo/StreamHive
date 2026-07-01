@@ -2,4 +2,4 @@
 package version
 
 // Version is the public release version (semver).
-const Version = "0.4.0"
+const Version = "0.5.0"
