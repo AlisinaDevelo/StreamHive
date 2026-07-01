@@ -101,6 +101,7 @@ Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside applicati
 | `-tls-ca` / `-tls-server-name` / `-tls-insecure-skip-verify` | Client TLS |
 | `-replicate` | Enable blob replication from framed peers |
 | `-store-dir` | Persist replicated blobs with `storage.FileStore` |
+| `-list-keys` | Print durable `-store-dir` keys as hex and exit |
 | `-put-key` / `-put-data` | Send one manually keyed blob to outbound peers |
 | `-put-content-key` | Derive the outbound blob key from `SHA-256(-put-data)` |
 | `-exit-after-put` | Exit after the outbound blob frame is written |

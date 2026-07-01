@@ -55,6 +55,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	showVer := fs.Bool("version", false, "print version and exit")
 	replicate := fs.Bool("replicate", false, "enable in-memory blob replication from framed peers")
 	storeDir := fs.String("store-dir", "", "directory for durable replicated blobs (requires -replicate)")
+	listKeys := fs.Bool("list-keys", false, "print durable store keys as hex and exit (requires -store-dir)")
 	putKey := fs.String("put-key", "", "send one replicated blob key to -dial peer")
 	putData := fs.String("put-data", "", "send one replicated blob value to -dial peer")
 	putContentKey := fs.Bool("put-content-key", false, "derive the replicated blob key from SHA-256(-put-data)")
@@ -100,6 +101,25 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		if err := validateReconnectBackoff(*peerReconnectMin, *peerReconnectMax); err != nil {
 			return err
 		}
+	}
+	if *listKeys {
+		if *storeDir == "" {
+			return fmt.Errorf("storage: -list-keys requires -store-dir")
+		}
+		store, err := storage.NewFileStore(*storeDir)
+		if err != nil {
+			return fmt.Errorf("storage: open file store: %w", err)
+		}
+		keys, err := store.ListKeys(ctx)
+		if err != nil {
+			return err
+		}
+		for _, key := range keys {
+			if _, err := fmt.Fprintln(stdout, hex.EncodeToString(key)); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	if *storeDir != "" && !*replicate {
 		return fmt.Errorf("storage: -store-dir requires -replicate")

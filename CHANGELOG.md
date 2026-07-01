@@ -11,6 +11,7 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 - **`replication`**: `blob.has`, `blob.get`, and `blob.missing` message types for anti-entropy sync.
 - **CLI**: startup anti-entropy sync for `-replicate` peers using `blob.has` / `blob.missing` / `blob.put`.
 - **CLI**: `-put-content-key` for sending blobs under `SHA-256(-put-data)` content keys.
+- **CLI**: `-list-keys` for inspecting durable `-store-dir` keys as hex.
 - **Demo**: 3-node Docker Compose demo with durable stores and node restart rehydration.
 - **Metrics**: Prometheus text endpoint at `/metrics/prometheus`.
 

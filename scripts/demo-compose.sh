@@ -4,6 +4,7 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 DATA_DIR="${STREAMHIVE_DATA_DIR:-$ROOT_DIR/.streamhive-compose}"
 COMPOSE="docker compose"
+EXPECTED_KEY="cd13ac0817f0f8ba2f29fba23617ef0191a6193ed0311298163834199398ee05"
 export STREAMHIVE_DATA_DIR="$DATA_DIR"
 
 cleanup() {
@@ -65,6 +66,17 @@ $COMPOSE -f "$ROOT_DIR/docker-compose.yml" up -d node3
 wait_ready node3 http://127.0.0.1:18083
 wait_stored node3 http://127.0.0.1:18083
 
+keys="$($COMPOSE -f "$ROOT_DIR/docker-compose.yml" --profile tools run --rm --no-deps -v "$DATA_DIR/node3:/data" seed -store-dir /data -list-keys)"
+case "$keys" in
+	*"$EXPECTED_KEY"*) ;;
+	*)
+		echo "node3 store did not contain expected content key $EXPECTED_KEY" >&2
+		echo "$keys" >&2
+		exit 1
+		;;
+esac
+
 echo "3-node compose demo passed: node3 rehydrated the blob after restart"
+echo "rehydrated key: $EXPECTED_KEY"
 curl -fsS http://127.0.0.1:18083/metrics
 echo

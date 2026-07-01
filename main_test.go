@@ -145,6 +145,27 @@ func TestRun_storeDirRequiresReplicate(t *testing.T) {
 	assert.Contains(t, err.Error(), "-store-dir requires -replicate")
 }
 
+func TestRun_listKeysRequiresStoreDir(t *testing.T) {
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"-list-keys"}, &out, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "-list-keys requires -store-dir")
+}
+
+func TestRun_listKeysPrintsDurableKeysAsHex(t *testing.T) {
+	ctx := context.Background()
+	storeDir := t.TempDir()
+	store, err := storage.NewFileStore(storeDir)
+	require.NoError(t, err)
+	require.NoError(t, store.Put(ctx, []byte("b"), []byte("second")))
+	require.NoError(t, store.Put(ctx, []byte("a"), []byte("first")))
+
+	var out bytes.Buffer
+	err = run(ctx, []string{"-store-dir", storeDir, "-list-keys"}, &out, io.Discard)
+	require.NoError(t, err)
+	assert.Equal(t, "61\n62\n", out.String())
+}
+
 func TestRun_peerReconnectRequiresPeers(t *testing.T) {
 	var out bytes.Buffer
 	err := run(context.Background(), []string{"-peer-reconnect"}, &out, io.Discard)
