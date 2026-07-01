@@ -192,6 +192,13 @@ func TestRun_peerReconnectRejectsOneShotPut(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot be combined with -put-key")
 }
 
+func TestRun_syncIntervalRejectsNegative(t *testing.T) {
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"-sync-interval", "-1s"}, &out, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "-sync-interval must be zero or greater")
+}
+
 func TestRun_replicatesBlobPutToDialPeer(t *testing.T) {
 	serverCtx, serverCancel := context.WithCancel(context.Background())
 	defer serverCancel()
@@ -371,6 +378,72 @@ func TestRun_syncsMissingBlobOnConnect(t *testing.T) {
 			"-dial", m[1],
 		}, &targetOut, &targetErr)
 	}()
+
+	require.Eventually(t, func() bool {
+		targetStore, err := storage.NewFileStore(targetDir)
+		if err != nil {
+			return false
+		}
+		got, err := targetStore.Get(context.Background(), key)
+		return err == nil && string(got) == string(data)
+	}, 3*time.Second, 20*time.Millisecond, "source logs=%q target logs=%q", sourceErr.String(), targetErr.String())
+
+	targetCancel()
+	sourceCancel()
+	require.NoError(t, <-targetErrCh)
+	require.NoError(t, <-sourceErrCh)
+}
+
+func TestRun_periodicSyncsBlobAddedAfterConnect(t *testing.T) {
+	sourceDir := t.TempDir()
+	targetDir := t.TempDir()
+	ctx := context.Background()
+
+	sourceStore, err := storage.NewFileStore(sourceDir)
+	require.NoError(t, err)
+
+	sourceCtx, sourceCancel := context.WithCancel(context.Background())
+	defer sourceCancel()
+	var sourceOut, sourceErr safeBuffer
+	sourceErrCh := make(chan error, 1)
+	go func() {
+		sourceErrCh <- run(sourceCtx, []string{
+			"-listen", "127.0.0.1:0",
+			"-replicate",
+			"-store-dir", sourceDir,
+			"-sync-interval", "50ms",
+		}, &sourceOut, &sourceErr)
+	}()
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(sourceOut.String(), "listening on")
+	}, 3*time.Second, 20*time.Millisecond)
+
+	re := regexp.MustCompile(`listening on ([^\n]+)`)
+	m := re.FindStringSubmatch(sourceOut.String())
+	require.Len(t, m, 2, "stdout=%q", sourceOut.String())
+
+	targetCtx, targetCancel := context.WithCancel(context.Background())
+	defer targetCancel()
+	var targetOut, targetErr safeBuffer
+	targetErrCh := make(chan error, 1)
+	go func() {
+		targetErrCh <- run(targetCtx, []string{
+			"-listen", "127.0.0.1:0",
+			"-replicate",
+			"-store-dir", targetDir,
+			"-dial", m[1],
+		}, &targetOut, &targetErr)
+	}()
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(targetOut.String(), "listening on") &&
+			strings.Contains(sourceErr.String(), "peer connected")
+	}, 3*time.Second, 20*time.Millisecond)
+
+	data := []byte("arrived after connect")
+	key := storage.SHA256Key(data)
+	require.NoError(t, sourceStore.Put(ctx, key, data))
 
 	require.Eventually(t, func() bool {
 		targetStore, err := storage.NewFileStore(targetDir)

@@ -104,6 +104,17 @@ func (t *TCPTransport) Metrics() *TransportMetrics {
 	return t.metrics
 }
 
+// Peers returns a snapshot of currently connected peers.
+func (t *TCPTransport) Peers() []Peer {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	peers := make([]Peer, 0, len(t.peers))
+	for _, peer := range t.peers {
+		peers = append(peers, peer)
+	}
+	return peers
+}
+
 func (t *TCPTransport) logger() *slog.Logger {
 	if t.Logger != nil {
 		return t.Logger

@@ -49,6 +49,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	peerReconnect := fs.Bool("peer-reconnect", false, "keep retrying -peers with exponential backoff")
 	peerReconnectMin := fs.Duration("peer-reconnect-min", 500*time.Millisecond, "minimum reconnect backoff for -peer-reconnect")
 	peerReconnectMax := fs.Duration("peer-reconnect-max", 30*time.Second, "maximum reconnect backoff for -peer-reconnect")
+	syncInterval := fs.Duration("sync-interval", 0, "periodically advertise local blob keys to connected peers (0 = startup only)")
 	health := fs.String("health", "", "optional HTTP listen addr for /livez /readyz /metrics (e.g. :8080)")
 	maxPeers := fs.Int("max-peers", 0, "max simultaneous peers (0 = unlimited)")
 	dialTimeout := fs.Duration("dial-timeout", 0, "default dial timeout (0 = use context only)")
@@ -124,6 +125,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	if *storeDir != "" && !*replicate {
 		return fmt.Errorf("storage: -store-dir requires -replicate")
+	}
+	if *syncInterval < 0 {
+		return fmt.Errorf("replication: -sync-interval must be zero or greater")
 	}
 
 	replLimits := replication.Limits{MaxDataBytes: *maxBlobBytes}
@@ -249,6 +253,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	defer func() {
 		_ = tr.Close()
 	}()
+	if keyLister != nil && *syncInterval > 0 {
+		startPeriodicBlobHas(ctx, tr, keyLister, replLimits, *syncInterval, replMetrics, log)
+	}
 
 	addr := tr.Addr()
 	if addr == nil {
@@ -404,6 +411,34 @@ func sendBlobHas(ctx context.Context, peer p2p.Peer, lister storage.BlobKeyListe
 		return err
 	}
 	return writePeerFrame(peer, payload, maxFrameBytes)
+}
+
+func startPeriodicBlobHas(
+	ctx context.Context,
+	tr *p2p.TCPTransport,
+	lister storage.BlobKeyLister,
+	limits replication.Limits,
+	interval time.Duration,
+	metrics *replicationMetrics,
+	log *slog.Logger,
+) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			for _, peer := range tr.Peers() {
+				if err := sendBlobHas(ctx, peer, lister, limits, tr.MaxFrameBytes); err != nil {
+					metrics.SendErrors.Add(1)
+					log.Error("replication periodic inventory send", "remote", peer.RemoteAddr().String(), "err", err)
+				}
+			}
+		}
+	}()
 }
 
 func sendRequestedBlobs(

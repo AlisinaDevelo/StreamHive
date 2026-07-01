@@ -68,6 +68,12 @@ go run . -listen 127.0.0.1:7071 -peers 127.0.0.1:7070,127.0.0.1:7072 -peer-recon
 
 When both sides run with `-replicate`, peers advertise local keys on connect and send missing blobs to each other. This startup anti-entropy path works with memory storage and durable `-store-dir` receivers.
 
+For long-running nodes, add periodic inventory sync:
+
+```bash
+go run . -listen 127.0.0.1:7071 -replicate -store-dir ./streamhive-data -peers 127.0.0.1:7070 -peer-reconnect -sync-interval 30s
+```
+
 To persist replicated blobs on the receiver, add `-store-dir`:
 
 ```bash
@@ -93,6 +99,7 @@ Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside applicati
 | `-peers` | Optional comma-separated peers to dial after listen |
 | `-peer-reconnect` | Retry `-peers` with exponential backoff |
 | `-peer-reconnect-min` / `-peer-reconnect-max` | Reconnect backoff bounds |
+| `-sync-interval` | Periodically advertise local blob keys to connected peers (0 = startup only) |
 | `-health` | HTTP `host:port` for `/livez`, `/readyz`, `/metrics` |
 | `-max-peers` | Cap simultaneous peers (0 = unlimited) |
 | `-dial-timeout` | Outbound dial timeout |

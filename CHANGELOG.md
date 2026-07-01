@@ -7,6 +7,7 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 ### Added
 
 - **Metrics**: duplicate blob counters for idempotent replication receives.
+- **CLI**: `-sync-interval` for periodic anti-entropy inventory after peer startup.
 
 ### Changed
 

@@ -124,6 +124,31 @@ func TestDial_registersOutboundPeer(t *testing.T) {
 	})
 }
 
+func TestPeersReturnsSnapshot(t *testing.T) {
+	ctx := context.Background()
+	server := NewTCPTransport("127.0.0.1:0")
+	server.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	require.NoError(t, server.ListenAndAccept(ctx))
+	defer func() { _ = server.Close() }()
+
+	client := NewTCPTransport("127.0.0.1:0")
+	client.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	require.NoError(t, client.ListenAndAccept(ctx))
+	defer func() { _ = client.Close() }()
+
+	require.NoError(t, client.Dial(ctx, server.Addr().String()))
+	waitFor(t, func() bool {
+		return len(server.Peers()) == 1 && len(client.Peers()) == 1
+	})
+
+	serverPeers := server.Peers()
+	clientPeers := client.Peers()
+	require.Len(t, serverPeers, 1)
+	require.Len(t, clientPeers, 1)
+	assert.False(t, serverPeers[0].IsOutbound())
+	assert.True(t, clientPeers[0].IsOutbound())
+}
+
 func TestDial_contextCancelled(t *testing.T) {
 	ctx := context.Background()
 	server := NewTCPTransport("127.0.0.1:0")
