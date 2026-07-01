@@ -14,6 +14,7 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 - **CLI**: `-list-keys` for inspecting durable `-store-dir` keys as hex.
 - **Demo**: 3-node Docker Compose demo with durable stores and node restart rehydration.
 - **Metrics**: Prometheus text endpoint at `/metrics/prometheus`.
+- **CI**: Docker Compose rehydration demo verification.
 
 ## [0.3.0] — 2026-06-24
 

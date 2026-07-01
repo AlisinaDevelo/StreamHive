@@ -78,6 +78,15 @@ jobs:
         run: |
           P2P_ADDR=127.0.0.1:17070 HEALTH_ADDR=127.0.0.1:18080 make demo-replication
 
+  compose-demo:
+    runs-on: ubuntu-latest
+    steps:
+      # v7.0.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Docker Compose rehydration demo
+        run: make demo-compose
+
   sbom:
     runs-on: ubuntu-latest
     steps:
