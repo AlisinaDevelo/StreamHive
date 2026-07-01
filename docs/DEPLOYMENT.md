@@ -26,6 +26,14 @@ make demo-compose
 
 The demo builds `streamhive:local`, starts node1, seeds one blob, starts node2 and node3, verifies node3 receives the blob, wipes node3's local demo data, restarts node3, and verifies startup anti-entropy rehydrates the blob again.
 
+Inspect a running Compose cluster:
+
+```bash
+make demo-status
+```
+
+The status command prints each node's `/peers`, `/metrics`, and durable store keys.
+
 Run the corruption repair demo:
 
 ```bash

@@ -7,6 +7,7 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 ### Added
 
 - **Ops**: `/peers` JSON endpoint for inspecting active peer addresses and connection direction.
+- **Demo**: `make demo-status` prints each Compose node's peers, metrics, and durable keys.
 
 ## [0.5.0] — 2026-07-01
 

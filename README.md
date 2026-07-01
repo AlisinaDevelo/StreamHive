@@ -64,6 +64,12 @@ For a 3-node Docker Compose demo with durable stores and node restart rehydratio
 make demo-compose
 ```
 
+To inspect a running Compose cluster:
+
+```bash
+make demo-status
+```
+
 For a 3-node corruption repair demo that deletes node3's durable blob and waits for periodic anti-entropy to restore it:
 
 ```bash

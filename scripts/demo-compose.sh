@@ -80,3 +80,4 @@ echo "3-node compose demo passed: node3 rehydrated the blob after restart"
 echo "rehydrated key: $EXPECTED_KEY"
 curl -fsS http://127.0.0.1:18083/metrics
 echo
+"$ROOT_DIR/scripts/demo-status.sh"
