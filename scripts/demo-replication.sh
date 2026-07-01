@@ -5,7 +5,6 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 BIN="$ROOT_DIR/bin/fs"
 P2P_ADDR="${P2P_ADDR:-127.0.0.1:7070}"
 HEALTH_ADDR="${HEALTH_ADDR:-127.0.0.1:8080}"
-BLOB_KEY="${BLOB_KEY:-demo}"
 BLOB_DATA="${BLOB_DATA:-hello streamhive}"
 LOG_FILE="$(mktemp -t streamhive-demo.XXXXXX)"
 
@@ -39,7 +38,7 @@ done
 "$BIN" \
 	-listen 127.0.0.1:0 \
 	-dial "$P2P_ADDR" \
-	-put-key "$BLOB_KEY" \
+	-put-content-key \
 	-put-data "$BLOB_DATA" \
 	-exit-after-put
 
@@ -54,6 +53,6 @@ until curl -fsS "http://$HEALTH_ADDR/metrics" | grep '"replication_blobs_stored"
 	sleep 0.1
 done
 
-echo "replicated blob '$BLOB_KEY' (${#BLOB_DATA} bytes)"
+echo "replicated content-addressed blob (${#BLOB_DATA} bytes)"
 curl -fsS "http://$HEALTH_ADDR/metrics"
 echo

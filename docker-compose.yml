@@ -73,8 +73,7 @@ services:
       - 127.0.0.1:0
       - -dial
       - node1:7070
-      - -put-key
-      - compose-demo
+      - -put-content-key
       - -put-data
       - hello from compose
       - -exit-after-put

@@ -81,7 +81,7 @@ classDiagram
 - Listener and peer map share a mutex; the accept loop exits when the listener is closed.
 - `Close` stops new accepts, waits for the accept goroutine, then closes open peer connections. Peer goroutines remove themselves from the map on EOF / error via `unregisterPeer`.
 - Optional `FrameHandler` runs per frame on each peer session until error, context cancellation, or disconnect.
-- CLI replication installs a `FrameHandler` that decodes `blob.put` messages and writes to `MemoryStore` by default, or `FileStore` when `-store-dir` is set. Outbound `-put-key` / `-put-data` sends one frame after `-dial` or `-peers` connects.
+- CLI replication installs a `FrameHandler` that decodes `blob.put` messages and writes to `MemoryStore` by default, or `FileStore` when `-store-dir` is set. Outbound `-put-key` / `-put-data` sends one manually keyed frame after `-dial` or `-peers` connects; `-put-content-key` derives the key from `SHA-256(-put-data)`.
 - `-peer-reconnect` manages only static `-peers` targets. It retries failed dials with exponential backoff and schedules another retry when an outbound configured peer disconnects.
 - Replication peers advertise local keys on connect. Receivers reply with `blob.missing`, and owners send the requested blobs with `blob.put`.
 
@@ -122,7 +122,7 @@ sequenceDiagram
   participant Replication
   participant Store as BlobStore
 
-  Sender->>SenderTransport: -dial receiver + -put-key/-put-data
+  Sender->>SenderTransport: -dial receiver + -put-key/-put-data or -put-content-key
   SenderTransport->>ReceiverTransport: SHV1 frame carrying blob.put JSON
   ReceiverTransport->>Replication: FrameHandler(payload)
   Replication->>Replication: decode + validate limits
@@ -133,8 +133,7 @@ Implemented:
 
 - Static peer replication over `-dial` and comma-separated `-peers`.
 - Optional reconnect/backoff for `-peers`.
-- One message type: `blob.put`.
-- Sync message vocabulary: `blob.has`, `blob.get`, and `blob.missing`.
+- Message types: `blob.put`, `blob.has`, `blob.get`, and `blob.missing`.
 - Startup anti-entropy for connected `-replicate` peers.
 - Receiver-side storage via `storage.MemoryStore` or durable `storage.FileStore` with `-store-dir`.
 - JSON `/metrics` counters for stored/sent blobs, bytes, and replication errors.

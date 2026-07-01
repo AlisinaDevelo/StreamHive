@@ -35,7 +35,7 @@ go run . -listen 127.0.0.1:7070 -replicate -health 127.0.0.1:8080
 Terminal 2: dial the receiver and send one blob.
 
 ```bash
-go run . -listen 127.0.0.1:0 -dial 127.0.0.1:7070 -put-key demo -put-data "hello streamhive" -exit-after-put
+go run . -listen 127.0.0.1:0 -dial 127.0.0.1:7070 -put-content-key -put-data "hello streamhive" -exit-after-put
 ```
 
 Inspect counters:
@@ -44,7 +44,7 @@ Inspect counters:
 curl -s http://127.0.0.1:8080/metrics
 ```
 
-Look for `replication_blobs_stored`, `replication_bytes_stored`, and transport frame counters. Use `/metrics` for JSON or `/metrics/prometheus` for Prometheus text format.
+Look for `replication_blobs_stored`, `replication_bytes_stored`, and transport frame counters. The sender derives the blob key from `SHA-256(put-data)` when `-put-content-key` is set. Use `/metrics` for JSON or `/metrics/prometheus` for Prometheus text format.
 
 Or run the whole flow:
 
@@ -79,7 +79,7 @@ go run . -listen 127.0.0.1:7070 -replicate -store-dir ./streamhive-data
 | Import | Purpose |
 |--------|---------|
 | `github.com/AliSinaDevelo/StreamHive/p2p` | `TCPTransport`, framing (`ReadFrame` / `WriteFrame`), metrics |
-| `github.com/AliSinaDevelo/StreamHive/replication` | Blob replication messages (`blob.put`) and store apply helper |
+| `github.com/AliSinaDevelo/StreamHive/replication` | Blob replication messages (`blob.put`, `blob.has`, `blob.get`, `blob.missing`) and store apply helper |
 | `github.com/AliSinaDevelo/StreamHive/storage` | `BlobStore`, `BlobKeyLister`, `MemoryStore`, `FileStore`, SHA-256 content key helpers |
 
 Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside application frames).
@@ -101,7 +101,8 @@ Wire handshake string constant: `p2p.HandshakeVersionV1` (carry inside applicati
 | `-tls-ca` / `-tls-server-name` / `-tls-insecure-skip-verify` | Client TLS |
 | `-replicate` | Enable blob replication from framed peers |
 | `-store-dir` | Persist replicated blobs with `storage.FileStore` |
-| `-put-key` / `-put-data` | Send one blob to the `-dial` peer |
+| `-put-key` / `-put-data` | Send one manually keyed blob to outbound peers |
+| `-put-content-key` | Derive the outbound blob key from `SHA-256(-put-data)` |
 | `-exit-after-put` | Exit after the outbound blob frame is written |
 | `-max-blob-bytes` | Cap replicated blob payload size |
 
@@ -116,7 +117,7 @@ flowchart TB
     T[TCPTransport]
     F[SHV1 frames]
     S[BlobStore]
-    R[replication blob.put]
+    R[replication blob.put / blob.has]
     CLI --> T
     T --> F
     F --> R

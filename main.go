@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -56,7 +57,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	storeDir := fs.String("store-dir", "", "directory for durable replicated blobs (requires -replicate)")
 	putKey := fs.String("put-key", "", "send one replicated blob key to -dial peer")
 	putData := fs.String("put-data", "", "send one replicated blob value to -dial peer")
-	exitAfterPut := fs.Bool("exit-after-put", false, "exit after sending -put-key to the dialed peer")
+	putContentKey := fs.Bool("put-content-key", false, "derive the replicated blob key from SHA-256(-put-data)")
+	exitAfterPut := fs.Bool("exit-after-put", false, "exit after sending one blob to outbound peers")
 	maxBlobBytes := fs.Int("max-blob-bytes", replication.DefaultMaxDataBytes, "max replicated blob payload bytes")
 
 	tlsCert := fs.String("tls-cert", "", "path to PEM certificate (enables TLS on listener)")
@@ -81,15 +83,19 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	peerTargets := combinePeerTargets(dialTarget, peerList)
-	if *putKey != "" && len(peerTargets) == 0 {
-		return fmt.Errorf("replication: -put-key requires -dial or -peers")
+	putRequested := *putKey != "" || *putContentKey
+	if putRequested && len(peerTargets) == 0 {
+		return fmt.Errorf("replication: -put-key or -put-content-key requires -dial or -peers")
+	}
+	if *putContentKey && *putKey != "" {
+		return fmt.Errorf("replication: -put-content-key cannot be combined with -put-key")
 	}
 	if *peerReconnect {
 		if len(peerList) == 0 {
 			return fmt.Errorf("peers: -peer-reconnect requires -peers")
 		}
-		if *putKey != "" {
-			return fmt.Errorf("replication: -peer-reconnect cannot be combined with -put-key")
+		if putRequested {
+			return fmt.Errorf("replication: -peer-reconnect cannot be combined with -put-key or -put-content-key")
 		}
 		if err := validateReconnectBackoff(*peerReconnectMin, *peerReconnectMax); err != nil {
 			return err
@@ -120,9 +126,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		}
 	}
 	var putPayload []byte
+	var putKeyBytes []byte
+	var putKeyLabel string
 	var putResult chan error
-	if *putKey != "" {
-		putPayload, err = replication.EncodeBlobPut([]byte(*putKey), []byte(*putData), replLimits)
+	if putRequested {
+		putKeyBytes, putKeyLabel = resolvePutKey(*putKey, []byte(*putData), *putContentKey)
+		putPayload, err = replication.EncodeBlobPut(putKeyBytes, []byte(*putData), replLimits)
 		if err != nil {
 			return err
 		}
@@ -147,7 +156,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			replMetrics.BlobsSent.Add(1)
 			replMetrics.BytesSent.Add(uint64(len(*putData)))
 			reportPutResult(putResult, nil)
-			log.Info("replicated blob sent", "remote", peer.RemoteAddr().String(), "key", *putKey, "bytes", len(*putData))
+			log.Info("replicated blob sent", "remote", peer.RemoteAddr().String(), "key", putKeyLabel, "bytes", len(*putData))
 		}
 		if keyLister != nil {
 			if err := sendBlobHas(ctx, peer, keyLister, replLimits, tr.MaxFrameBytes); err != nil {
@@ -311,7 +320,7 @@ func handleReplicationMessage(
 		}
 		metrics.BlobsStored.Add(1)
 		metrics.BytesStored.Add(uint64(len(msg.Data)))
-		attrs := []any{"remote", peer.RemoteAddr().String(), "key", string(msg.Key), "bytes", len(msg.Data)}
+		attrs := []any{"remote", peer.RemoteAddr().String(), "key", formatBlobKey(msg.Key), "bytes", len(msg.Data)}
 		if memoryStore != nil {
 			attrs = append(attrs, "blobs", memoryStore.Len())
 		}
@@ -391,9 +400,24 @@ func sendRequestedBlobs(
 		}
 		metrics.BlobsSent.Add(1)
 		metrics.BytesSent.Add(uint64(len(data)))
-		log.Info("replicated blob sent", "remote", peer.RemoteAddr().String(), "key", string(key), "bytes", len(data))
+		log.Info("replicated blob sent", "remote", peer.RemoteAddr().String(), "key", formatBlobKey(key), "bytes", len(data))
 	}
 	return nil
+}
+
+func resolvePutKey(key string, data []byte, contentKey bool) ([]byte, string) {
+	if contentKey {
+		digest := storage.SHA256Key(data)
+		return digest, storage.SHA256KeyHex(data)
+	}
+	return []byte(key), key
+}
+
+func formatBlobKey(key []byte) string {
+	if err := storage.ValidateSHA256Key(key); err == nil {
+		return hex.EncodeToString(key)
+	}
+	return string(key)
 }
 
 func writePeerFrame(peer p2p.Peer, payload []byte, maxFrameBytes int) error {

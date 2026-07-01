@@ -123,7 +123,19 @@ func TestRun_putRequiresDial(t *testing.T) {
 	var out bytes.Buffer
 	err := run(context.Background(), []string{"-put-key", "alpha", "-put-data", "hello"}, &out, io.Discard)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "-put-key requires -dial or -peers")
+	assert.Contains(t, err.Error(), "-put-key or -put-content-key requires -dial or -peers")
+}
+
+func TestRun_putContentKeyRejectsExplicitKey(t *testing.T) {
+	var out bytes.Buffer
+	err := run(context.Background(), []string{
+		"-dial", "127.0.0.1:1",
+		"-put-key", "alpha",
+		"-put-content-key",
+		"-put-data", "hello",
+	}, &out, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "-put-content-key cannot be combined with -put-key")
 }
 
 func TestRun_storeDirRequiresReplicate(t *testing.T) {
@@ -235,6 +247,54 @@ func TestRun_replicatesBlobPutToFileStore(t *testing.T) {
 		got, err := store.Get(context.Background(), []byte("durable"))
 		return err == nil && string(got) == "persist me"
 	}, 3*time.Second, 20*time.Millisecond, "server logs=%q", serverErr.String())
+
+	serverCancel()
+	require.NoError(t, <-serverErrCh)
+}
+
+func TestRun_replicatesContentKeyedBlobPutToFileStore(t *testing.T) {
+	storeDir := t.TempDir()
+	serverCtx, serverCancel := context.WithCancel(context.Background())
+	defer serverCancel()
+	var serverOut, serverErr safeBuffer
+	serverErrCh := make(chan error, 1)
+	go func() {
+		serverErrCh <- run(serverCtx, []string{
+			"-listen", "127.0.0.1:0",
+			"-replicate",
+			"-store-dir", storeDir,
+		}, &serverOut, &serverErr)
+	}()
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(serverOut.String(), "listening on")
+	}, 3*time.Second, 20*time.Millisecond)
+
+	re := regexp.MustCompile(`listening on ([^\n]+)`)
+	m := re.FindStringSubmatch(serverOut.String())
+	require.Len(t, m, 2, "stdout=%q", serverOut.String())
+
+	data := []byte("address me by content")
+	var clientOut, clientErr safeBuffer
+	err := run(context.Background(), []string{
+		"-listen", "127.0.0.1:0",
+		"-dial", m[1],
+		"-put-content-key",
+		"-put-data", string(data),
+		"-exit-after-put",
+	}, &clientOut, &clientErr)
+	require.NoError(t, err, "client logs=%q", clientErr.String())
+
+	key := storage.SHA256Key(data)
+	require.Eventually(t, func() bool {
+		store, err := storage.NewFileStore(storeDir)
+		if err != nil {
+			return false
+		}
+		got, err := store.Get(context.Background(), key)
+		return err == nil && string(got) == string(data)
+	}, 3*time.Second, 20*time.Millisecond, "server logs=%q", serverErr.String())
+	assert.Contains(t, serverErr.String(), storage.SHA256KeyHex(data))
 
 	serverCancel()
 	require.NoError(t, <-serverErrCh)
@@ -356,6 +416,22 @@ func TestMissingKeys(t *testing.T) {
 		nil,
 	)
 	require.Equal(t, [][]byte{[]byte("a")}, again)
+}
+
+func TestResolvePutKey(t *testing.T) {
+	key, label := resolvePutKey("manual", []byte("hello"), false)
+	assert.Equal(t, []byte("manual"), key)
+	assert.Equal(t, "manual", label)
+
+	key, label = resolvePutKey("", []byte("hello"), true)
+	assert.Equal(t, storage.SHA256Key([]byte("hello")), key)
+	assert.Equal(t, storage.SHA256KeyHex([]byte("hello")), label)
+}
+
+func TestFormatBlobKey(t *testing.T) {
+	data := []byte("hello")
+	assert.Equal(t, "manual", formatBlobKey([]byte("manual")))
+	assert.Equal(t, storage.SHA256KeyHex(data), formatBlobKey(storage.SHA256Key(data)))
 }
 
 func TestWritePrometheusMetrics(t *testing.T) {
