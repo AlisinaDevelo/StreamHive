@@ -4,6 +4,8 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-07-01
+
 ### Added
 
 - **`storage`**: SHA-256 content key helpers for content-addressed blob IDs.
