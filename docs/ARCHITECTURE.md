@@ -32,6 +32,8 @@ flowchart TD
 | `internal/version` | Semver string for releases |
 | `.` | CLI: `run`, health HTTP server, replication demo flags |
 
+For the wire-level frame and message contract, see [PROTOCOL.md](PROTOCOL.md).
+
 ### Core interfaces
 
 The seams are interfaces, so storage and peers are swappable without touching the layers

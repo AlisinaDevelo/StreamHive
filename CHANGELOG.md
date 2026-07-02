@@ -7,6 +7,7 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 ### Added
 
 - **`p2p`**: `PeerSnapshots` exposes connected peer metadata for operational tooling.
+- **Docs**: protocol reference for SHV1 frames, replication messages, limits, and repair behavior.
 
 ### Changed
 
