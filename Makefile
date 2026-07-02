@@ -1,4 +1,4 @@
-.PHONY: build run test test-race vet cover lint demo-replication demo-compose demo-repair demo-status ci help
+.PHONY: build run test test-race vet cover lint demo-replication demo-compose demo-repair demo-failure demo-status ci help
 
 build:
 	@mkdir -p bin
@@ -32,10 +32,13 @@ demo-compose:
 demo-repair:
 	@./scripts/demo-repair.sh
 
+demo-failure:
+	@./scripts/demo-failure.sh
+
 demo-status:
 	@./scripts/demo-status.sh
 
 ci: vet test-race lint
 
 help:
-	@echo "Targets: build run test test-race vet cover lint demo-replication demo-compose demo-repair demo-status ci"
+	@echo "Targets: build run test test-race vet cover lint demo-replication demo-compose demo-repair demo-failure demo-status ci"

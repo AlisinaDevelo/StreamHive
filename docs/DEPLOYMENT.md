@@ -42,6 +42,14 @@ make demo-repair
 
 The repair demo starts the same 3-node cluster, seeds one content-addressed blob, deletes node3's durable blob file, and verifies periodic anti-entropy restores the exact key.
 
+Run the reconnect/failure demo:
+
+```bash
+make demo-failure
+```
+
+The failure demo starts the same 3-node cluster, seeds a blob, stops node2, deletes node2's durable blob file while the process is down, restarts node2, waits for `/peers` to show an active connection, and verifies periodic anti-entropy restores the key.
+
 Health endpoints are exposed on:
 
 - **node1**: <http://127.0.0.1:18081>

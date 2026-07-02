@@ -8,6 +8,8 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 
 - **Ops**: `/peers` JSON endpoint for inspecting active peer addresses and connection direction.
 - **Demo**: `make demo-status` prints each Compose node's peers, metrics, and durable keys.
+- **Demo**: `make demo-failure` proves reconnect plus anti-entropy repair after a node restart.
+- **CI**: Docker Compose reconnect/failure demo verification.
 
 ## [0.5.0] — 2026-07-01
 

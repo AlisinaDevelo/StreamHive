@@ -76,6 +76,12 @@ For a 3-node corruption repair demo that deletes node3's durable blob and waits 
 make demo-repair
 ```
 
+For a reconnect/failure demo that stops node2, deletes its durable blob while down, restarts it, and waits for peer reconnect plus repair:
+
+```bash
+make demo-failure
+```
+
 For a longer-lived node with static peers, use `-peers` and reconnect backoff:
 
 ```bash

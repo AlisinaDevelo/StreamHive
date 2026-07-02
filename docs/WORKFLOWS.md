@@ -28,6 +28,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on pushes and pull requests to 
 - `make demo-replication` with fixed localhost ports
 - `make demo-compose` to verify 3-node durable rehydration
 - `make demo-repair` to verify periodic repair after local durable corruption
+- `make demo-failure` to verify peer reconnect plus repair after a node restart
 - Coverage profile upload as a workflow artifact (`coverage-<go-version>.out`)
 - **SBOM** job: CycloneDX JSON via `cyclonedx-gomod`, uploaded as `sbom-cyclonedx`
 

@@ -6,6 +6,7 @@ coverage.out
 coverage.html
 .streamhive-compose/
 .streamhive-repair/
+.streamhive-failure/
 .DS_Store
 .idea/
 .vscode/

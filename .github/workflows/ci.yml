@@ -96,6 +96,15 @@ jobs:
       - name: Docker Compose corruption repair demo
         run: make demo-repair
 
+  failure-demo:
+    runs-on: ubuntu-latest
+    steps:
+      # v7.0.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Docker Compose reconnect failure demo
+        run: make demo-failure
+
   sbom:
     runs-on: ubuntu-latest
     steps:
