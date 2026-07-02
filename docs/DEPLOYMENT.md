@@ -14,7 +14,7 @@ docker run --rm -p 7070:7070 -p 8080:8080 streamhive:local \
 - **7070** — P2P TCP listener (example).
 - **8080** — HTTP `/livez`, `/readyz`, `/peers` (JSON peer metadata), `/metrics` (JSON counters), `/metrics/prometheus` (Prometheus text).
 
-Use TLS flags (`-tls-cert`, `-tls-key`, `-tls-ca`, …) when exposing services beyond a lab network.
+Use TLS flags (`-tls-cert`, `-tls-key`, `-tls-ca`, `-tls-server-name`) when exposing services beyond a lab network. Reserve `-tls-insecure-skip-verify` for local development. For mTLS or custom trust policy, configure `p2p.TCPTransport.TLSServerConfig` and `TLSClientConfig` in library code. StreamHive does not yet provide application-level peer identity or authorization; keep the P2P port behind a trusted network boundary.
 
 ## Docker Compose demo
 

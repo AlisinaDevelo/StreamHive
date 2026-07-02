@@ -8,6 +8,23 @@ If you believe you have found a security vulnerability, please open a **private*
 
 This project is experimental research code. It is not hardened for hostile networks; treat deployments accordingly.
 
+## Transport Security And Identity
+
+StreamHive can wrap peer connections in TLS:
+
+- `-tls-cert` and `-tls-key` enable TLS on the listener.
+- `-tls-ca` and `-tls-server-name` enable outbound certificate verification.
+- `-tls-insecure-skip-verify` is for local development only.
+
+Library users can configure `p2p.TCPTransport.TLSServerConfig` and
+`p2p.TCPTransport.TLSClientConfig` directly. Use `tls.Config.ClientAuth`,
+`ClientCAs`, and client certificates when you need mTLS.
+
+TLS protects the TCP channel and, when configured with CA verification, authenticates the
+certificate presented by the peer. StreamHive does not yet have application-level peer
+identity, authorization, ACLs, or signed replication messages. Do not expose the P2P
+port to untrusted networks without a deployment-level trust boundary.
+
 ## Dependency scanning
 
 CI runs `govulncheck ./...` on each push and pull request to `main`.

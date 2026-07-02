@@ -112,7 +112,7 @@ stateDiagram-v2
 
 - **Dial** respects context cancellation and optional `DialTimeout`.
 - **Max peers** rejects new inbound connections when the cap is reached (`PeersRejected` metric).
-- **TLS** failures surface from `HandshakeContext` on outbound dials. **mTLS** is supported by configuring `tls.Config` yourself (`ClientAuth`, `ClientCAs` on `TLSServerConfig`; client certs on `TLSClientConfig`). There is no application-level identity beyond TLS yet.
+- **TLS** failures surface from `HandshakeContext` on outbound dials. **mTLS** is supported by configuring `tls.Config` yourself (`ClientAuth`, `ClientCAs` on `TLSServerConfig`; client certs on `TLSClientConfig`). TLS can authenticate certificates, but StreamHive still has no application-level peer identity, authorization, ACLs, or signed replication messages.
 - **Replication decode/apply** rejects unknown message types, empty keys, oversized keys, and oversized payloads before writing to storage.
 
 ## Replication v0.3 scope
