@@ -4,6 +4,8 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-07-02
+
 ### Added
 
 - **Ops**: `/peers` JSON endpoint for inspecting active peer addresses and connection direction.
