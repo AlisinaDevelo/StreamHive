@@ -149,6 +149,38 @@ func TestPeersReturnsSnapshot(t *testing.T) {
 	assert.True(t, clientPeers[0].IsOutbound())
 }
 
+func TestPeerSnapshotsIncludesConnectionMetadata(t *testing.T) {
+	ctx := context.Background()
+	before := time.Now().UTC()
+	server := NewTCPTransport("127.0.0.1:0")
+	server.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	require.NoError(t, server.ListenAndAccept(ctx))
+	defer func() { _ = server.Close() }()
+
+	client := NewTCPTransport("127.0.0.1:0")
+	client.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	require.NoError(t, client.ListenAndAccept(ctx))
+	defer func() { _ = client.Close() }()
+
+	require.NoError(t, client.Dial(ctx, server.Addr().String()))
+	waitFor(t, func() bool {
+		return len(server.PeerSnapshots()) == 1 && len(client.PeerSnapshots()) == 1
+	})
+
+	serverSnapshot := server.PeerSnapshots()[0]
+	clientSnapshot := client.PeerSnapshots()[0]
+	assert.False(t, serverSnapshot.Outbound)
+	assert.True(t, clientSnapshot.Outbound)
+	assert.NotEmpty(t, serverSnapshot.RemoteAddr)
+	assert.NotEmpty(t, serverSnapshot.LocalAddr)
+	assert.NotEmpty(t, clientSnapshot.RemoteAddr)
+	assert.NotEmpty(t, clientSnapshot.LocalAddr)
+	assert.False(t, serverSnapshot.ConnectedAt.Before(before))
+	assert.False(t, clientSnapshot.ConnectedAt.Before(before))
+	assert.False(t, serverSnapshot.ConnectedAt.After(time.Now().UTC()))
+	assert.False(t, clientSnapshot.ConnectedAt.After(time.Now().UTC()))
+}
+
 func TestDial_contextCancelled(t *testing.T) {
 	ctx := context.Background()
 	server := NewTCPTransport("127.0.0.1:0")

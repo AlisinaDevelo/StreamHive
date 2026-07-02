@@ -34,20 +34,6 @@ func (testPeer) RemoteAddr() net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0,
 func (testPeer) Close() error         { return nil }
 func (testPeer) IsOutbound() bool     { return false }
 
-type staticPeer struct {
-	addr     string
-	outbound bool
-}
-
-func (p staticPeer) RemoteAddr() net.Addr { return staticAddr(p.addr) }
-func (p staticPeer) Close() error         { return nil }
-func (p staticPeer) IsOutbound() bool     { return p.outbound }
-
-type staticAddr string
-
-func (a staticAddr) Network() string { return "tcp" }
-func (a staticAddr) String() string  { return string(a) }
-
 func (s *safeBuffer) Write(p []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -630,15 +616,29 @@ func TestWritePrometheusMetrics(t *testing.T) {
 }
 
 func TestSnapshotPeersSortsByAddress(t *testing.T) {
-	resp := snapshotPeers([]p2p.Peer{
-		staticPeer{addr: "127.0.0.1:9002", outbound: true},
-		staticPeer{addr: "127.0.0.1:9001", outbound: false},
-	})
+	connectedAt := time.Date(2026, 7, 2, 1, 2, 3, 4, time.UTC)
+	now := connectedAt.Add(1500 * time.Millisecond)
+	resp := snapshotPeers([]p2p.PeerSnapshot{
+		{RemoteAddr: "127.0.0.1:9002", LocalAddr: "127.0.0.1:7002", Outbound: true, ConnectedAt: connectedAt},
+		{RemoteAddr: "127.0.0.1:9001", LocalAddr: "127.0.0.1:7001", Outbound: false, ConnectedAt: connectedAt},
+	}, now)
 
 	require.Equal(t, 2, resp.ActivePeers)
 	require.Equal(t, []peerStatus{
-		{RemoteAddr: "127.0.0.1:9001", Outbound: false},
-		{RemoteAddr: "127.0.0.1:9002", Outbound: true},
+		{
+			RemoteAddr:     "127.0.0.1:9001",
+			LocalAddr:      "127.0.0.1:7001",
+			Outbound:       false,
+			ConnectedAt:    "2026-07-02T01:02:03.000000004Z",
+			ConnectedForMS: 1500,
+		},
+		{
+			RemoteAddr:     "127.0.0.1:9002",
+			LocalAddr:      "127.0.0.1:7002",
+			Outbound:       true,
+			ConnectedAt:    "2026-07-02T01:02:03.000000004Z",
+			ConnectedForMS: 1500,
+		},
 	}, resp.Peers)
 }
 

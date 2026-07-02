@@ -24,23 +24,30 @@ var ErrTransportClosed = errors.New("p2p: transport closed")
 
 // TCPPeer is a TCP-backed Peer.
 type TCPPeer struct {
-	conn     net.Conn
-	outbound bool
+	conn        net.Conn
+	outbound    bool
+	connectedAt time.Time
 }
 
 // NewTCPPeer wraps a connection as a Peer.
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
-	return &TCPPeer{conn: conn, outbound: outbound}
+	return &TCPPeer{conn: conn, outbound: outbound, connectedAt: time.Now().UTC()}
 }
 
 // RemoteAddr returns the remote network address.
 func (p *TCPPeer) RemoteAddr() net.Addr { return p.conn.RemoteAddr() }
+
+// LocalAddr returns the local network address.
+func (p *TCPPeer) LocalAddr() net.Addr { return p.conn.LocalAddr() }
 
 // Close closes the connection.
 func (p *TCPPeer) Close() error { return p.conn.Close() }
 
 // IsOutbound reports whether this peer was created from a dial (outbound).
 func (p *TCPPeer) IsOutbound() bool { return p.outbound }
+
+// ConnectedAt reports when this peer was registered locally.
+func (p *TCPPeer) ConnectedAt() time.Time { return p.connectedAt }
 
 // Conn returns the underlying connection for protocol codecs.
 func (p *TCPPeer) Conn() net.Conn { return p.conn }
@@ -51,6 +58,14 @@ func (p *TCPPeer) WriteFrame(payload []byte, maxPayload int) error {
 }
 
 var _ Peer = (*TCPPeer)(nil)
+
+// PeerSnapshot is a point-in-time description of a connected peer.
+type PeerSnapshot struct {
+	RemoteAddr  string
+	LocalAddr   string
+	Outbound    bool
+	ConnectedAt time.Time
+}
 
 // TCPTransport listens on TCP and tracks connected peers.
 type TCPTransport struct {
@@ -113,6 +128,25 @@ func (t *TCPTransport) Peers() []Peer {
 		peers = append(peers, peer)
 	}
 	return peers
+}
+
+// PeerSnapshots returns stable metadata for currently connected peers.
+func (t *TCPTransport) PeerSnapshots() []PeerSnapshot {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	snapshots := make([]PeerSnapshot, 0, len(t.peers))
+	for _, peer := range t.peers {
+		snapshot := PeerSnapshot{
+			RemoteAddr: peer.RemoteAddr().String(),
+			Outbound:   peer.IsOutbound(),
+		}
+		if tcpPeer, ok := peer.(*TCPPeer); ok {
+			snapshot.LocalAddr = tcpPeer.LocalAddr().String()
+			snapshot.ConnectedAt = tcpPeer.ConnectedAt()
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	return snapshots
 }
 
 func (t *TCPTransport) logger() *slog.Logger {

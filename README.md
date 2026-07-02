@@ -50,7 +50,7 @@ Inspect connected peers:
 curl -s http://127.0.0.1:8080/peers
 ```
 
-Look for `replication_blobs_stored`, `replication_bytes_stored`, duplicate counters, and transport frame counters. The sender derives the blob key from `SHA-256(put-data)` when `-put-content-key` is set; receivers verify SHA-256-shaped keys before storing. Use `/metrics` for JSON counters, `/metrics/prometheus` for Prometheus text format, and `/peers` for a sorted peer snapshot.
+Look for `replication_blobs_stored`, `replication_bytes_stored`, duplicate counters, and transport frame counters. The sender derives the blob key from `SHA-256(put-data)` when `-put-content-key` is set; receivers verify SHA-256-shaped keys before storing. Use `/metrics` for JSON counters, `/metrics/prometheus` for Prometheus text format, and `/peers` for sorted peer metadata including remote address, local address, direction, connection timestamp, and connection age.
 
 Or run the whole flow:
 
@@ -108,7 +108,7 @@ go run . -listen 127.0.0.1:7070 -replicate -store-dir ./streamhive-data
 
 | Import | Purpose |
 |--------|---------|
-| `github.com/AliSinaDevelo/StreamHive/p2p` | `TCPTransport`, framing (`ReadFrame` / `WriteFrame`), metrics |
+| `github.com/AliSinaDevelo/StreamHive/p2p` | `TCPTransport`, framing (`ReadFrame` / `WriteFrame`), peer snapshots, metrics |
 | `github.com/AliSinaDevelo/StreamHive/replication` | Blob replication messages (`blob.put`, `blob.has`, `blob.get`, `blob.missing`) and store apply helper |
 | `github.com/AliSinaDevelo/StreamHive/storage` | `BlobStore`, `BlobKeyLister`, `MemoryStore`, `FileStore`, SHA-256 content key helpers |
 

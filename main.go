@@ -696,8 +696,11 @@ func (m *replicationMetrics) Snapshot() map[string]int64 {
 }
 
 type peerStatus struct {
-	RemoteAddr string `json:"remote_addr"`
-	Outbound   bool   `json:"outbound"`
+	RemoteAddr     string `json:"remote_addr"`
+	LocalAddr      string `json:"local_addr,omitempty"`
+	Outbound       bool   `json:"outbound"`
+	ConnectedAt    string `json:"connected_at,omitempty"`
+	ConnectedForMS int64  `json:"connected_for_ms"`
 }
 
 type peersResponse struct {
@@ -705,12 +708,23 @@ type peersResponse struct {
 	Peers       []peerStatus `json:"peers"`
 }
 
-func snapshotPeers(peers []p2p.Peer) peersResponse {
+func snapshotPeers(peers []p2p.PeerSnapshot, now time.Time) peersResponse {
 	statuses := make([]peerStatus, 0, len(peers))
 	for _, peer := range peers {
+		connectedAt := ""
+		var connectedForMS int64
+		if !peer.ConnectedAt.IsZero() {
+			connectedAt = peer.ConnectedAt.UTC().Format(time.RFC3339Nano)
+			if now.After(peer.ConnectedAt) {
+				connectedForMS = now.Sub(peer.ConnectedAt).Milliseconds()
+			}
+		}
 		statuses = append(statuses, peerStatus{
-			RemoteAddr: peer.RemoteAddr().String(),
-			Outbound:   peer.IsOutbound(),
+			RemoteAddr:     peer.RemoteAddr,
+			LocalAddr:      peer.LocalAddr,
+			Outbound:       peer.Outbound,
+			ConnectedAt:    connectedAt,
+			ConnectedForMS: connectedForMS,
 		})
 	}
 	sort.Slice(statuses, func(i, j int) bool {
@@ -753,7 +767,7 @@ func startHealth(addr string, tr *p2p.TCPTransport, replMetrics *replicationMetr
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		_ = enc.Encode(snapshotPeers(tr.Peers()))
+		_ = enc.Encode(snapshotPeers(tr.PeerSnapshots(), time.Now()))
 	})
 	mux.HandleFunc("/metrics/prometheus", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")

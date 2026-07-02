@@ -4,6 +4,14 @@ All notable changes to StreamHive are documented here. This project follows [Sem
 
 ## [Unreleased]
 
+### Added
+
+- **`p2p`**: `PeerSnapshots` exposes connected peer metadata for operational tooling.
+
+### Changed
+
+- **Ops**: `/peers` now includes local address, connection timestamp, and connection age.
+
 ## [0.6.0] — 2026-07-02
 
 ### Added

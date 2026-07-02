@@ -12,7 +12,7 @@ docker run --rm -p 7070:7070 -p 8080:8080 streamhive:local \
 ```
 
 - **7070** — P2P TCP listener (example).
-- **8080** — HTTP `/livez`, `/readyz`, `/peers` (JSON peer snapshot), `/metrics` (JSON counters), `/metrics/prometheus` (Prometheus text).
+- **8080** — HTTP `/livez`, `/readyz`, `/peers` (JSON peer metadata), `/metrics` (JSON counters), `/metrics/prometheus` (Prometheus text).
 
 Use TLS flags (`-tls-cert`, `-tls-key`, `-tls-ca`, …) when exposing services beyond a lab network.
 
@@ -104,5 +104,5 @@ Define error budgets once you expose a workload to users. Baseline probes:
 
 - **Availability**: `/livez` success rate.
 - **Readiness**: `/readyz` reflects listener bound (`TCPTransport.Ready`).
-- **Peer visibility**: `/peers` returns active connected peers and whether each connection is outbound.
+- **Peer visibility**: `/peers` returns active connected peers with remote address, local address, direction, connection timestamp, and connection age.
 - **Saturation**: JSON `/metrics` fields `active_peers` and `peers_rejected`, or Prometheus samples from `/metrics/prometheus`.

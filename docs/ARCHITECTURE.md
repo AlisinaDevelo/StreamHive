@@ -17,7 +17,7 @@ flowchart TD
 
 ## Layers
 
-1. **Transport (`p2p`)** — `TCPTransport` with `context.Context` on `ListenAndAccept` / `Dial`, accept-loop shutdown coordinated with `Close`, optional TLS, optional framed reads via `FrameHandler`, metrics, and peer disconnect hooks.
+1. **Transport (`p2p`)** — `TCPTransport` with `context.Context` on `ListenAndAccept` / `Dial`, accept-loop shutdown coordinated with `Close`, optional TLS, optional framed reads via `FrameHandler`, metrics, peer snapshots, and peer disconnect hooks.
 2. **Framing (`p2p`)** — `SHV1` length-prefixed payloads (`ReadFrame` / `WriteFrame`) with a configurable maximum size (DoS bound). Application-level handshake string: `HandshakeVersionV1`.
 3. **Replication (`replication`)** — typed JSON messages carried inside frames. `blob.put` writes one key/value blob to a receiving `BlobStore`; `blob.has`, `blob.get`, and `blob.missing` provide the inventory/request vocabulary for anti-entropy sync.
 4. **Storage (`storage`)** — `BlobStore` interface with `BlobKeyLister` inventory support, `MemoryStore` for tests/demos, and `FileStore` for durable local blobs; SHA-256 helpers provide stable content-addressed keys.
@@ -137,7 +137,7 @@ Implemented:
 - Message types: `blob.put`, `blob.has`, `blob.get`, and `blob.missing`.
 - Startup anti-entropy for connected `-replicate` peers.
 - Receiver-side storage via `storage.MemoryStore` or durable `storage.FileStore` with `-store-dir`.
-- JSON `/peers` snapshots for connected peer addresses/direction.
+- JSON `/peers` snapshots for connected peer addresses, direction, connection timestamp, and connection age.
 - JSON `/metrics` counters for stored/sent blobs, bytes, duplicates, and replication errors.
 
 Not implemented yet:
