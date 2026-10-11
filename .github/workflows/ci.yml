@@ -34,7 +34,7 @@ jobs:
 
       # v7.0.1
       - name: Upload coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: coverage-${{ matrix.go-version }}
           path: coverage.out
@@ -664,7 +664,7 @@ jobs:
           cyclonedx-gomod mod -json -output sbom.cdx.json .
 
       # v7.0.1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: sbom-cyclonedx
           path: sbom.cdx.json
